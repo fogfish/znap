@@ -10,15 +10,15 @@ package org.zalando.znap.nakadi
 import java.net.URI
 
 import org.zalando.stups.tokens.Tokens
-import org.zalando.znap.Global
+import org.zalando.znap.config.Config
 
 /**
   * For accessing Nakadi tokens.
   */
-class NakadiTokens {
+class NakadiTokens(config: Config) {
   private val tokens = {
-    Tokens.createAccessTokensWithUri(new URI(Global.Tokens.AccessToken))
-      .tokenInfoUri(new URI(Global.Tokens.TokenInfo))
+    Tokens.createAccessTokensWithUri(new URI(config.Tokens.AccessToken))
+      .tokenInfoUri(new URI(config.Tokens.TokenInfo))
       .manageToken("nakadi").addScope("uid").done()
 //      .manageToken("nakadi").addScope("nakadi.event_stream.read").done()
       .start()
