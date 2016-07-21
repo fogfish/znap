@@ -2,6 +2,8 @@
 
 `znap` is the appliance as-is deployable to cloud environment. It builds a snapshot from asynchronous event stream(s), compose an actual state to point in time and provides an ability to replay it.    
 
+[![Build Status](https://secure.travis-ci.org/zalando/znap.svg?branch=master)](http://travis-ci.org/zalando/znap)
+
 ## Inspiration
 
 There is a limited retention period at data streaming/queuing application such as [Kinesis](https://aws.amazon.com/kinesis/), [SQS](https://aws.amazon.com/sqs/) or [Nakadi](https://github.com/zalando/nakadi). These applications provides long-enough retention period (e.g. up to 2 weeks) for high-frequency data processing application to ensure data durability and high-availability. However, some application requires *permanent* data retention. There should be ability to *replay* complete data set traversed through the stream.
