@@ -14,11 +14,11 @@ import com.fasterxml.jackson.databind.JsonNode
 final case class Event(//@JsonProperty(value = "metadata", required = true)
                        //metadata: Metadata,
 
-                       @JsonProperty(value = "data_op", required = true)
+                       @JsonProperty(value = "event_class", required = true)
                        dataOp: String,
 
-                       @JsonProperty(value = "data", required = true)
+                       @JsonProperty(value = "body", required = true)
                        data: JsonNode,
 
-                       @JsonProperty(value = "data_type", required = true)
+                       @JsonProperty(value = "event_type", required = true)
                        dataType: String)
