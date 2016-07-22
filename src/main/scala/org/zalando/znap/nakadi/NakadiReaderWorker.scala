@@ -54,9 +54,11 @@ class NakadiReaderWorker(partition: String,
       .via(nakadiConnectionFlow)
       .flatMapConcat {
         case HttpResponse(StatusCodes.OK, _, entity, _) =>
-          entity.withSizeLimit(config.HttpStreamingMaxSize).dataBytes.map { chunk =>
-            Json.read[EventBatch](chunk.utf8String)
-          }
+          entity.withSizeLimit(config.HttpStreamingMaxSize)
+            .dataBytes
+            .scan("")((acc, curr) => if (acc.contains("\n")) curr.utf8String else acc + curr.utf8String)
+            .filter(_.contains("\n"))
+            .map {(x) => Json.read[EventBatch](x)}
 
         // If partitions are cleared on the backend, the local offset might become further.
         // To prevent this, we throw the special exception.
