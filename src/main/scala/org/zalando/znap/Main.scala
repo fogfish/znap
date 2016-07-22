@@ -13,9 +13,7 @@ import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, NakadiTarget}
 
 object Main extends App {
-  // TODO normal command line options processing
-  val snapshotsConfigFile = args(0)
-  val config = new Config(snapshotsConfigFile)
+  val config = new Config()
 
   val logger = LoggerFactory.getLogger(Main.getClass)
   logger.info(s"Application instance started with ID ${config.ApplicationInstanceId}")

@@ -42,12 +42,7 @@ class GetPartitionsWorker(nakadiTarget: NakadiTarget,
       val http = Http(context.system)
 
       // Request partitions of the topic.
-      val schema =
-      if (nakadiTarget.secureConnection) {
-        "https"
-      } else {
-        "http"
-      }
+      val schema = nakadiTarget.schema
       val uri = s"$schema://${nakadiTarget.host}/event-types/${nakadiTarget.eventType}/partitions"
       val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
       val request = HttpRequest(
