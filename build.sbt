@@ -1,6 +1,6 @@
 name := "znap"
 
-version := "1.0-SNAPSHOT"
+version := sys.props.getOrElse("version", default = "1.0-SNAPSHOT")
 
 scalaVersion := "2.11.7"
 
