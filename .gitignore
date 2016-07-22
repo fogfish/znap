@@ -1,5 +1,7 @@
 *.class
 *.log
+*.conf
+scm-source.json
 
 # sbt specific
 .cache
@@ -18,3 +20,4 @@ project/plugins/project/
 
 # Intellij specific
 .idea
+

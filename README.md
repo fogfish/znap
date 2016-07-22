@@ -16,11 +16,13 @@ The log replay recovery works for relatively short logs otherwise amount of data
 ### ChangeLog
 The project uses [semantic versions](http://semver.org) to identity stable releases. 
 
+* [0.0.0](https://github.com/zalando/znap/releases/tag/0.0.0) - preview 
 
 ### Requirements
 To develop `znap`, you need:
 - [Scala](http://www.scala-lang.org)
 - [sbt](http://www.scala-sbt.org) 
+- [stups](https://stups.io) Note, the appliance is biased to stups deployment practices. Further releases will be compatible with vanilla AWS tools.   
 
 ### Getting znap
 
@@ -28,7 +30,37 @@ The latest version of `znap` is available at its `master` branch.  All developme
 
 
 ### Running znap
-tbd
+
+The appliance uses REST APIs to stream events (e.g. [Nakadi API](https://github.com/zalando/nakadi)). These APIs are protected using OAuth2 implicit grant flow. You need to obtains and supply OAuth2 token to daemon in order to run it locally.   
+
+```
+export OAUTH2_ACCESS_TOKENS=nakadi=$(zign token)
+```
+
+You need to specify list of data sources (event streams) where to fetch and snapshot data. 
+
+```
+export ZNAP_STREAMS=https+nakadi://my.nakadi.host.com/my-event-stream1|https+nakadi://my.nakadi.other-host.com/my-event-stream2
+```
+
+Run the appliance 
+
+```
+sbt run
+```
+
+You might also run the appliance within the docker container, either assemble container by your self or use community version `pierone.stups.zalan.do/ie/znap:x.y.z`
+
+```
+docker run -it -e "OAUTH2_ACCESS_TOKENS=${OAUTH2_ACCESS_TOKENS}" -e "ZNAP_STREAMS=${ZNAP_STREAMS}" pierone.stups.zalan.do/ie/znap:x.y.z
+```
+
+Assemble container 
+
+```
+make compile VSN=x.y.z
+make docker VSN=x.y.z
+```
 
 ### Deploying znap
 tbd

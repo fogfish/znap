@@ -1,0 +1,4 @@
+.git/*
+target/*
+!target/scala-2.11/znap-assembly-*.jar
+

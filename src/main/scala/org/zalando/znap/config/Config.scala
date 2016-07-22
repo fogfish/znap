@@ -84,7 +84,6 @@ class Config {
     val SnapshotsDirectory = appConfig.getString("persistence.snapshotsDirectory")
   }
 
-  // TODO robust targets parsing
   val Targets: List[SnapshotTarget] = {
     for {
       uri <- snapshotsConfig
