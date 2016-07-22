@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration.FiniteDuration
 
-class Config(snapshotsConfigFile: String) {
+class Config {
   private val logger = LoggerFactory.getLogger(classOf[Config])
 
   val ApplicationInstanceId = {
@@ -31,8 +31,10 @@ class Config(snapshotsConfigFile: String) {
 
   // Application config.
 
-  private val appConfig = ConfigFactory.systemProperties()
-    .withFallback(ConfigFactory.defaultApplication())
+  private val appConfig = ConfigFactory
+    .systemProperties()
+    .withFallback(ConfigFactory.defaultApplication().resolve())
+
   object Tokens {
     val AccessToken = appConfig.getString("tokens.accessToken")
     val TokenInfo = appConfig.getString("tokens.tokenInfo")
@@ -71,41 +73,27 @@ class Config(snapshotsConfigFile: String) {
   }
 
 
+
   // Snapshots config.
 
-  private val snapshotsConfig = ConfigFactory.parseFile(new File(snapshotsConfigFile))
+  private val snapshotsConfig = appConfig.getString("znap.streams").split('|').toList
 
+  // TODO dirs part of persistence global config. (folders has to be backed by EBS)
   object Paths {
-    val WorkingDirectory = snapshotsConfig.getString("workingDirectory")
-    val SnapshotsDirectory = snapshotsConfig.getString("snapshotsDirectory")
+    val WorkingDirectory = appConfig.getString("persistence.workingDirectory")
+    val SnapshotsDirectory = appConfig.getString("persistence.snapshotsDirectory")
   }
 
   // TODO robust targets parsing
   val Targets: List[SnapshotTarget] = {
-    import scala.collection.JavaConverters._
     for {
-      targetObj <- snapshotsConfig.getObjectList("targets").asScala.toList
+      uri <- snapshotsConfig
     } yield {
-      val targetConf = targetObj.toConfig
-      val targetType = targetConf.getString("type")
+      val stream = ConfigStream(uri)
 
-      targetType match {
+      stream.protocol match {
         case "nakadi" =>
-          val host = targetConf.getString("host")
-          val secureConnection = targetConf.getBoolean("secureConnection")
-          val port =
-            if (targetConf.hasPath("port")) {
-              targetConf.getInt("port")
-            } else {
-              if (secureConnection) {
-                443
-              } else {
-                80
-              }
-            }
-
-          val eventType = targetConf.getString("eventType")
-          NakadiTarget(host, port, secureConnection, eventType)
+          NakadiTarget(stream.schema, stream.host, stream.port, stream.stream)
         case tt =>
           val message = s"Unknown target type $tt"
           logger.error(message)

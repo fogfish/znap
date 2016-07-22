@@ -43,7 +43,7 @@ class NakadiReaderWorker(partition: String,
     val headers = List(authorizationHeader, xNakadiCursor)
 
     val nakadiConnectionFlow =
-      if (target.secureConnection) {
+      if (target.schema.equals("https")) {
         Http(context.system).outgoingConnectionHttps(target.host, target.port)
       } else {
         Http(context.system).outgoingConnection(target.host, target.port)

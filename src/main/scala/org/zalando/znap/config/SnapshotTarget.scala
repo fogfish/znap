@@ -11,9 +11,12 @@ trait SnapshotTarget {
   val id: String
 }
 
-final case class NakadiTarget(host: String,
-                        port: Int,
-                        secureConnection: Boolean,
-                        eventType: String) extends SnapshotTarget {
+// TODO: name eventType is confusing, this is name of stream
+// TODO: think to replace with ConfigStream
+final case class NakadiTarget(
+  schema: String,
+  host: String,
+  port: Int,
+  eventType: String) extends SnapshotTarget {
   override val id: String = eventType
 }
