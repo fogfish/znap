@@ -144,6 +144,7 @@ class NakadiReader(partition: String,
 
   whenUnhandled {
     case Event(unexpected, _) =>
+      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData}")
       throw new UnexpectedMessageException(unexpected)
   }
 }

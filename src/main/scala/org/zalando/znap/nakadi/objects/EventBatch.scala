@@ -13,4 +13,4 @@ final case class EventBatch(@JsonProperty(value = "cursor", required = true)
                             cursor: Cursor,
 
                             @JsonProperty(value = "events")
-                            events: Option[List[Event]])
+                            events: Option[List[NakadiEvent]])

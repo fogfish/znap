@@ -7,13 +7,12 @@
   */
 package org.zalando.znap.nakadi
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, Props}
 import akka.pattern.AskTimeoutException
 import org.zalando.znap.config.{Config, NakadiTarget}
 import org.zalando.znap.disk.DiskPersistor
 import org.zalando.znap.nakadi.GetPartitionsWorker.Partitions
-import org.zalando.znap.nakadi.objects.EventBatch
-import org.zalando.znap.utils.{ActorNames, NoUnexpectedMessages, TimeoutException}
+import org.zalando.znap.utils.NoUnexpectedMessages
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -26,9 +25,9 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
     with NoUnexpectedMessages with ActorLogging {
 
   import NakadiTargetSnapshotter._
-  import org.zalando.znap.utils._
   import akka.pattern.{ask, pipe}
   import context.dispatcher
+  import org.zalando.znap.utils._
 
   private val diskPersistor = context.actorOf(Props(
     classOf[DiskPersistor], nakadiTarget, config
