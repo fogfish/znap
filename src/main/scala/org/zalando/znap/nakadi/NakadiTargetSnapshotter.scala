@@ -12,6 +12,7 @@ import akka.pattern.AskTimeoutException
 import org.zalando.znap.config.{Config, NakadiTarget}
 import org.zalando.znap.disk.DiskPersistor
 import org.zalando.znap.nakadi.GetPartitionsWorker.Partitions
+import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.utils.{ActorNames, NoUnexpectedMessages, TimeoutException}
 
 import scala.concurrent.duration.FiniteDuration
@@ -61,6 +62,7 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
         context.actorOf(
           Props(classOf[NakadiReader],
             partitionAndLastOffset.partition,
+            // TODO: make initial offset configurable (e.g. restart from start)
             partitionAndLastOffset.lastOffset,
             nakadiTarget, config, tokens),
           s"NakadiReader-${nakadiTarget.id}-${partitionAndLastOffset.partition}-${partitionAndLastOffset.lastOffset}-${ActorNames.randomPart()}"
@@ -79,8 +81,8 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
     case PersistorAcceptPartitionsTimeout(t) =>
       ignore()
 
-    case x =>
-      println(x)
+    case event: EventBatch =>
+      diskPersistor forward event
   }
 
   override def receive: Receive = initialization

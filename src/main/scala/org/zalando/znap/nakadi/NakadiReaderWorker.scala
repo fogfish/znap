@@ -56,7 +56,7 @@ class NakadiReaderWorker(partition: String,
         case HttpResponse(StatusCodes.OK, _, entity, _) =>
           entity.withSizeLimit(config.HttpStreamingMaxSize)
             .dataBytes
-            .scan("")((acc, curr) => if (acc.contains("\n")) curr.utf8String else acc + curr.utf8String)
+            .scan("")((acc, chunk) => if (acc.contains("\n")) chunk.utf8String else acc + chunk.utf8String)
             .filter(_.contains("\n"))
             .map {(x) => Json.read[EventBatch](x)}
 

@@ -120,8 +120,6 @@ class NakadiReader(partition: String,
       currentSentOffset = Some(batch.cursor.offset)
       context.parent ! batch
       goto(WaitingForAck)
-
-    // Ack is unexpected here.
   }
 
   when(WaitingForAck) {
