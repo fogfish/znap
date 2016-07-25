@@ -122,8 +122,6 @@ class NakadiReader(partition: String,
       currentSentOffset = Some(batch.cursor.offset)
       diskPersistor ! batch
       goto(WaitingForAck)
-
-    // Ack is unexpected here.
   }
 
   when(WaitingForAck) {

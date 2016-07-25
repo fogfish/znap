@@ -9,12 +9,12 @@ package org.zalando.znap.disk
 
 import java.io.{File, IOException}
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{Props, Actor, ActorLogging}
 import org.zalando.znap.config.{Config, SnapshotTarget}
-import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.objects.Partition
-import org.zalando.znap.utils.NoUnexpectedMessages
+import org.zalando.znap.utils.{Json, NoUnexpectedMessages}
+import org.zalando.znap.nakadi.objects.Event
 
 class DiskPersistor(target: SnapshotTarget,
                     config: Config) extends Actor
@@ -24,6 +24,8 @@ class DiskPersistor(target: SnapshotTarget,
 
   private val instanceDir = new File(config.Paths.WorkingDirectory, config.ApplicationInstanceId)
   private val workingSnapshotDirectory = new File(instanceDir, target.id)
+
+  private val hfs = context.actorOf(Props(new HashFS(workingSnapshotDirectory)))
 
   def initialization: Receive = {
     case InitCommand =>
@@ -82,9 +84,17 @@ class DiskPersistor(target: SnapshotTarget,
 
   def persisting: Receive = {
     case eventBatch: EventBatch =>
-      println(eventBatch)
-      sender() ! Ack
+      eventBatch.events foreach {_ foreach store}
   }
+
+  private
+  def store(x: Event): Unit =
+    x.dataOp match {
+      case "ARTICLE_UPDATE" =>
+        //@todo: parametrize id discovery
+        val id = x.data.get("sku").textValue()
+        hfs forward HashFS.Put(id, Json.write(x))
+    }
 
   override def receive: Receive = initialization
 }
