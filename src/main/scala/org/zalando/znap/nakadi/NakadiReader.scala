@@ -14,6 +14,7 @@ import akka.actor.{ActorLogging, ActorRef, FSM, OneForOneStrategy, Props, Superv
 import akka.http.scaladsl.model.EntityStreamSizeException
 import NakadiReader._
 import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.utils.{ActorNames, ThrowableUtils, TimePeriodEventTracker, UnexpectedMessageException}
 
@@ -28,7 +29,8 @@ class NakadiReader(partition: String,
                    offsetOpt: Option[String],
                    target: NakadiTarget,
                    config: Config,
-                   tokens: NakadiTokens) extends FSM[State, Unit] with ActorLogging {
+                   tokens: NakadiTokens,
+                   diskPersistor: ActorRef) extends FSM[State, Unit] with ActorLogging {
   val errorTracker = new TimePeriodEventTracker(
     config.Supervision.NakadiReader.MaxFailures,
     config.Supervision.NakadiReader.Period
@@ -118,7 +120,7 @@ class NakadiReader(partition: String,
 
     case Event(batch: EventBatch, _) =>
       currentSentOffset = Some(batch.cursor.offset)
-      context.parent ! batch
+      diskPersistor ! batch
       goto(WaitingForAck)
 
     // Ack is unexpected here.
@@ -152,8 +154,6 @@ object NakadiReader {
   sealed trait State
   case object WaitingForSeq extends State
   case object WaitingForAck extends State
-
-  case object Ack
 
   final class StreamCompletedException extends Exception
 }
