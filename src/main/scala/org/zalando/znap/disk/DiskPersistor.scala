@@ -27,7 +27,7 @@ class DiskPersistor(target: SnapshotTarget,
 
   private val hfs = context.actorOf(Props(new HashFS(workingSnapshotDirectory)))
 
-  override def receive: Receive = {
+  def initialization: Receive = {
     case InitCommand =>
       try {
         if (workingSnapshotDirectory.mkdir()) {
@@ -79,12 +79,16 @@ class DiskPersistor(target: SnapshotTarget,
 
       sender() ! PartitionsAccepted(partitionAndLastOffsetList)
 
-    case event: EventBatch =>
-      event.events foreach {_ foreach persist}
+      context.become(persisting)
+  }
+
+  def persisting: Receive = {
+    case eventBatch: EventBatch =>
+      eventBatch.events foreach {_ foreach store}
   }
 
   private
-  def persist(x: Event): Unit =
+  def store(x: Event): Unit =
     x.dataOp match {
       case "ARTICLE_UPDATE" =>
         //@todo: parametrize id discovery
@@ -92,6 +96,7 @@ class DiskPersistor(target: SnapshotTarget,
         hfs forward HashFS.Put(id, Json.write(x))
     }
 
+  override def receive: Receive = initialization
 }
 
 object DiskPersistor {

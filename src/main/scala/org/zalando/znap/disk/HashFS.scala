@@ -4,7 +4,7 @@ import java.io._
 
 import akka.actor.SupervisorStrategy.Stop
 import akka.actor.{ActorLogging, Props, OneForOneStrategy, Actor}
-import org.zalando.znap.nakadi.NakadiReader.Ack
+import org.zalando.znap.nakadi.Messages.Ack
 import scala.concurrent.duration._
 
 /** Hierarchical Hash File System */
