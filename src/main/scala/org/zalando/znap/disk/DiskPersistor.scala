@@ -11,6 +11,8 @@ import java.io.{File, IOException}
 
 import akka.actor.{Actor, ActorLogging}
 import org.zalando.znap.config.{Config, SnapshotTarget}
+import org.zalando.znap.nakadi.Messages.Ack
+import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.objects.Partition
 import org.zalando.znap.utils.NoUnexpectedMessages
 
@@ -23,7 +25,7 @@ class DiskPersistor(target: SnapshotTarget,
   private val instanceDir = new File(config.Paths.WorkingDirectory, config.ApplicationInstanceId)
   private val workingSnapshotDirectory = new File(instanceDir, target.id)
 
-  override def receive: Receive = {
+  def initialization: Receive = {
     case InitCommand =>
       try {
         if (workingSnapshotDirectory.mkdir()) {
@@ -74,7 +76,17 @@ class DiskPersistor(target: SnapshotTarget,
       }
 
       sender() ! PartitionsAccepted(partitionAndLastOffsetList)
+
+      context.become(persisting)
   }
+
+  def persisting: Receive = {
+    case eventBatch: EventBatch =>
+      println(eventBatch)
+      sender() ! Ack
+  }
+
+  override def receive: Receive = initialization
 }
 
 object DiskPersistor {

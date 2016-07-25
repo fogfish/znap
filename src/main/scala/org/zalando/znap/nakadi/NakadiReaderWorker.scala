@@ -15,6 +15,7 @@ import akka.stream.scaladsl.{Sink, Source}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.NakadiReaderWorker._
 import org.zalando.znap.nakadi.objects.{Cursor, EventBatch}
 import org.zalando.znap.utils.{Json, UnexpectedMessageException}

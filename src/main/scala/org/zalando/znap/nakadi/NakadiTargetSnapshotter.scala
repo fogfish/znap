@@ -62,11 +62,12 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
           Props(classOf[NakadiReader],
             partitionAndLastOffset.partition,
             partitionAndLastOffset.lastOffset,
-            nakadiTarget, config, tokens),
+            nakadiTarget, config, tokens,
+            diskPersistor),
           s"NakadiReader-${nakadiTarget.id}-${partitionAndLastOffset.partition}-${partitionAndLastOffset.lastOffset}-${ActorNames.randomPart()}"
         )
       }
-      context.become(waitingForEventBatch)
+      context.become(working)
 
     case scala.util.Failure(ex: AskTimeoutException) =>
       throw ex
@@ -75,12 +76,9 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
       throw new TimeoutException(s"Disk persistor initialization timeout ($t) for target $nakadiTarget.")
   }
 
-  def waitingForEventBatch: Receive = {
+  def working: Receive = {
     case PersistorAcceptPartitionsTimeout(t) =>
       ignore()
-
-    case x =>
-      println(x)
   }
 
   override def receive: Receive = initialization
