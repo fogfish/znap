@@ -52,9 +52,9 @@ class NakadiTargetSnapshotter(nakadiTarget: NakadiTarget,
       diskPersistor ! DiskPersistor.AcceptPartitionsCommand(partitions)
 
       context.system.scheduler.scheduleOnce(
-        config.Persistence.SnapshotInitTimeout,
+        config.Persistence.Disk.SnapshotInitTimeout,
         self,
-        PersistorAcceptPartitionsTimeout(config.Persistence.SnapshotInitTimeout))
+        PersistorAcceptPartitionsTimeout(config.Persistence.Disk.SnapshotInitTimeout))
 
     case DiskPersistor.PartitionsAccepted(partitionAndLastOffsetList) =>
       partitionAndLastOffsetList.foreach { partitionAndLastOffset =>

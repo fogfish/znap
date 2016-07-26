@@ -33,6 +33,8 @@ libraryDependencies ++= {
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
-    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+    "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+
+    "org.apache.commons" % "commons-compress" % "1.12"
   )
 }

@@ -52,9 +52,22 @@ class Config {
   val HttpStreamingMaxSize = appConfig.getBytes("http.streamingMaxSize")
 
   object Persistence {
-    val SnapshotInitTimeout = {
-      val t = appConfig.getDuration("persistence.snapshotInitTimeout")
-      FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS)
+    object Disk {
+      val SnapshotInitTimeout = {
+        val t = appConfig.getDuration("persistence.disk.snapshotInitTimeout")
+        FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS)
+      }
+
+      val SnapshotInterval = {
+        val t = appConfig.getDuration("persistence.disk.snapshotInterval")
+        FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS)
+      }
+
+      // TODO dirs part of persistence global config. (folders has to be backed by EBS)
+      object Paths {
+        val WorkingDirectory = appConfig.getString("persistence.disk.workingDirectory")
+        val SnapshotsDirectory = appConfig.getString("persistence.disk.snapshotsDirectory")
+      }
     }
   }
 
@@ -77,12 +90,6 @@ class Config {
   // Snapshots config.
 
   private val snapshotsConfig = appConfig.getString("znap.streams").split('|').toList
-
-  // TODO dirs part of persistence global config. (folders has to be backed by EBS)
-  object Paths {
-    val WorkingDirectory = appConfig.getString("persistence.workingDirectory")
-    val SnapshotsDirectory = appConfig.getString("persistence.snapshotsDirectory")
-  }
 
   val Targets: List[SnapshotTarget] = {
     for {

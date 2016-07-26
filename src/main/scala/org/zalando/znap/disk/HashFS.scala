@@ -17,7 +17,7 @@ import org.zalando.znap.utils.{EscalateEverythingSupervisorStrategy, NoUnexpecte
 /**
   * Hierarchical Hash File System.
   */
-class HashFS(val root: File) extends FSM[State, Data] with ActorLogging {
+class HashFS(root: File) extends FSM[State, Data] with ActorLogging {
   override val supervisorStrategy = new EscalateEverythingSupervisorStrategy
 
   startWith(WaitingForCommands, NoData)
@@ -80,38 +80,48 @@ private class HashFSTx(val root: File) extends Actor with NoUnexpectedMessages w
 
   override def receive: Receive = {
     case command @ PutCommand(id, blob) =>
-//      log.debug(s"Put command for id = $id")
-
-      try
-      {
-        val f = file(id)
-        ensureDir(f)
-
-        val out = new BufferedWriter(new FileWriter(f))
-        out.write(blob)
-        out.close()
-      } catch {
-        case e: IOException =>
-          log.error(e, s"Put $id to file failed")
-          throw e
-      }
+      put(id, blob)
       context.parent ! CommandExecuted(command)
       context.stop(self)
 
     case command @ RemoveCommand(id) =>
-//      log.debug(s"Remove command for id = $id")
-
-      try
-      {
-        val f = file(id)
-        f.delete()
-      } catch {
-        case e: IOException =>
-          log.error(e, s"Remove $id file failed")
-          throw e
-      }
+      remove(id)
       context.parent ! CommandExecuted(command)
       context.stop(self)
+  }
+
+  private def put(id: String, blob: String): Unit = {
+//      log.debug(s"Put command for id = $id")
+
+    try
+    {
+      val f = file(id)
+      ensureDir(f)
+
+      val out = new BufferedWriter(new FileWriter(f))
+      out.write(blob)
+      out.close()
+    } catch {
+      case e: IOException =>
+        val message = s"Put $id to file failed"
+        log.error(e, message)
+        throw new DiskException(message, e)
+    }
+  }
+
+  private def remove(id: String): Unit = {
+//      log.debug(s"Remove command for id = $id")
+
+    try
+    {
+      val f = file(id)
+      f.delete()
+    } catch {
+      case e: IOException =>
+        val message = s"Remove $id file failed"
+        log.error(e, message)
+        throw new DiskException(message, e)
+    }
   }
 
   private def file(id: String): File = {
