@@ -73,6 +73,7 @@ class GetPartitionsWorker(nakadiTarget: NakadiTarget,
   def waitingForResponse(requestSource: ActorRef): Receive = {
     case partitions: Partitions =>
       timer.foreach(_.cancel())
+      println(partitions)
       requestSource ! partitions
       context.stop(self)
 

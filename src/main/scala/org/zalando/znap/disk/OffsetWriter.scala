@@ -19,8 +19,9 @@ private class OffsetWriter(val root: File) extends Actor with NoUnexpectedMessag
         out.close()
       } catch {
         case e: IOException =>
-          log.error(e, s"Error writing offset $offset")
-          throw e
+          val message = s"Error writing offset $offset"
+          log.error(e, message)
+          throw new DiskException(message, e)
       }
       sender() ! Ack
   }

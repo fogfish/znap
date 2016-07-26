@@ -33,7 +33,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupWorkingDirectory(): Unit = {
-    val workingDir = new File(config.Paths.WorkingDirectory)
+    val workingDir = new File(config.Persistence.Disk.Paths.WorkingDirectory)
     if (!workingDir.exists()) {
       if (workingDir.mkdir()) {
         logger.info(s"Working directory ${workingDir.getAbsoluteFile} doesn't exist, created")
@@ -48,7 +48,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupInstanceDirectory(): Unit = {
-    val instanceDir = new File(config.Paths.WorkingDirectory, config.ApplicationInstanceId)
+    val instanceDir = new File(config.Persistence.Disk.Paths.WorkingDirectory, config.ApplicationInstanceId)
     if (instanceDir.exists()) {
       val message = s"Instance directory ${instanceDir.getAbsoluteFile} exists"
       logger.error(message)
@@ -65,7 +65,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupSnapshotsDirectory(): Unit = {
-    val snapshotsDirectory = new File(config.Paths.SnapshotsDirectory)
+    val snapshotsDirectory = new File(config.Persistence.Disk.Paths.SnapshotsDirectory)
     if (!snapshotsDirectory.exists()) {
       if (snapshotsDirectory.mkdir()) {
         logger.info(s"Snapshots directory ${snapshotsDirectory.getAbsoluteFile} doesn't exist, created")
