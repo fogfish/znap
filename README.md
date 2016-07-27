@@ -28,7 +28,7 @@ To use Znap, you need:
 
 Please note that Znap is built with [STUPS](https://stups.io)'s deployment practices in mind. Future releases will be compatible with AWS tools.   
  
-### Running Znap
+### Running Znap Locally
 
 To stream events, Znap uses REST APIs protected using OAuth2's implicit grant flow (e.g. [Nakadi](https://github.com/zalando/nakadi)). To run it locally, obtain and supply an OAuth2 token to the daemon:
 
@@ -48,7 +48,8 @@ Run the appliance:
 sbt run
 ```
 
-You might also run Znap within a Docker container. Either assemble the container by yourself, or use this community version: `pierone.stups.zalan.do/ie/znap:x.y.z`.
+### Running Znap Locally
+You can also run Znap within a Docker container. Either assemble the container by yourself, or use this community version: `pierone.stups.zalan.do/ie/znap:x.y.z`.
 
 ```
 docker run -it -e "OAUTH2_ACCESS_TOKENS=${OAUTH2_ACCESS_TOKENS}" -e "ZNAP_STREAMS=${ZNAP_STREAMS}" pierone.stups.zalan.do/ie/znap:x.y.z
