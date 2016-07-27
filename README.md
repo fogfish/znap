@@ -8,7 +8,7 @@ By aggregating and merging events using a unique key, Znap's data snapshots miti
 
 ## Inspiration
 
-Data-streaming/queuing applications such as [Kinesis](https://aws.amazon.com/kinesis/), [SQS](https://aws.amazon.com/sqs/) and Zalando's [Nakadi](https://github.com/zalando/nakadi) typically offer limited retention periods — usually around two weeks. While this is enough time for high-frequency data processing applications to ensure data durability and high-availability, some applications require *permanent* data retention. Being able to *replay* a complete data set as it travels through the data stream was also something we wanted.
+Data-streaming/queuing applications such as [Kinesis](https://aws.amazon.com/kinesis/), [SQS](https://aws.amazon.com/sqs/) and Zalando's [Nakadi](https://github.com/zalando/nakadi) typically offer limited retention periods — usually around two weeks. While this is enough time for high-frequency data processing applications to ensure data durability and high-availability, some applications require *permanent* data retention. We also wanted the choice to *replay* a complete data set as it travels through the data stream.
 
 ## Getting Started
 
