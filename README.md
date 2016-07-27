@@ -26,7 +26,7 @@ To use Znap, you need:
 - [Scala](http://www.scala-lang.org)
 - [sbt](http://www.scala-sbt.org) 
 
-Znap is built with [STUPS](https://stups.io)'s deployment practices in mind. Future releases will be compatible with AWS tools.   
+Please note that Znap is built with [STUPS](https://stups.io)'s deployment practices in mind. Future releases will be compatible with AWS tools.   
  
 ### Running Znap
 
