@@ -1,5 +1,5 @@
 # znap
-
+ 
 **Znap** is an appliance that enables you to build a snapshot from asynchronous event stream(s), compose an actual state to a particular point in time, and replay it. It is deployable to any cloud environment and out-of-the-box useful. 
 
 By aggregating and merging events using a unique key, Znap's data snapshots mitigate the issue of delays in the recovery service level agreement, often caused by managing large amounts of data.
