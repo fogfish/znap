@@ -2,7 +2,7 @@ name := "znap"
 
 version := sys.props.getOrElse("version", default = "1.0-SNAPSHOT")
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
 scalacOptions ++= Seq(
   "-feature",
@@ -15,6 +15,7 @@ libraryDependencies ++= {
     "com.typesafe.akka" %% "akka-actor" % "2.4.7",
     "com.typesafe.akka" %% "akka-stream" % "2.4.7",
     "com.typesafe.akka" %% "akka-http-core" % "2.4.7",
+    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.7",
     "com.typesafe.akka" %% "akka-slf4j" % "2.4.7",
 
     "ch.qos.logback" % "logback-classic" % "1.1.7",
