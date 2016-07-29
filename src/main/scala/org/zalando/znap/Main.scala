@@ -13,7 +13,7 @@ import akka.http.scaladsl.model.headers.Connection
 import akka.stream.scaladsl.Sink
 import org.zalando.znap.nakadi.{NakadiTargetSnapshotter, NakadiTokens}
 import org.slf4j.LoggerFactory
-import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.config.{Config, NakadiSource, SnapshotTarget}
 import org.zalando.znap.restapi.Httpd
 import org.zalando.znap.service.{SnapshotEntityService, SnapshotService}
 
@@ -23,7 +23,7 @@ object Main extends App {
   implicit val logger = LoggerFactory.getLogger(Main.getClass)
   logger.info(s"Application instance started with ID ${config.ApplicationInstanceId}")
 
-  new Bootstrapper(config).bootstrap()
+//  new Bootstrapper(config).bootstrap()
 
   val tokens = new NakadiTokens(config)
 
@@ -34,11 +34,10 @@ object Main extends App {
     tokens.stop()
   }
 
-
   config.Targets.foreach {
-    case nakadiTarget: NakadiTarget =>
+    case target @ SnapshotTarget(source: NakadiSource, _, _) =>
       actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotter], nakadiTarget, config, tokens)
+        Props(classOf[NakadiTargetSnapshotter], target, config, tokens)
       )
   }
 

@@ -34,8 +34,10 @@ libraryDependencies ++= {
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
-    "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.21",
 
-    "org.apache.commons" % "commons-compress" % "1.12"
+    "org.apache.commons" % "commons-compress" % "1.12",
+
+    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
   )
 }

@@ -11,10 +11,7 @@ import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty}
 import com.fasterxml.jackson.databind.JsonNode
 
 @JsonIgnoreProperties(ignoreUnknown=true)
-final case class NakadiEvent(//@JsonProperty(value = "metadata", required = true)
-                             //metadata: Metadata,
-
-                             @JsonProperty(value = "event_class", required = true)
+final case class NakadiEvent(@JsonProperty(value = "event_class", required = true)
                              eventClass: String,
 
                              @JsonProperty(value = "body", required = true)

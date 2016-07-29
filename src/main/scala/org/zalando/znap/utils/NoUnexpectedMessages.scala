@@ -19,7 +19,7 @@ trait NoUnexpectedMessages extends Actor {
     beforeUnhandled(message)
     message match {
       case Terminated(dead) ⇒ super.unhandled(message)
-      case _                ⇒ throw new UnexpectedMessageException(message)
+      case _                ⇒ throw new UnexpectedMessageException(message, sender())
     }
   }
 
