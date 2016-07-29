@@ -12,7 +12,7 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.headers.{Authorization, OAuth2BearerToken}
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
-import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.objects.NakadiPartition
 import org.zalando.znap.objects.Partition
 import org.zalando.znap.utils.{NoUnexpectedMessages, TimeoutException}
@@ -22,7 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 /**
   * Actor that gets partitions information from Nakadi.
   */
-class GetPartitionsWorker(nakadiTarget: NakadiTarget,
+class GetPartitionsWorker(nakadiSource: NakadiSource,
                           config: Config,
                           tokens: NakadiTokens) extends Actor
     with NoUnexpectedMessages with ActorLogging {
@@ -42,8 +42,9 @@ class GetPartitionsWorker(nakadiTarget: NakadiTarget,
       val http = Http(context.system)
 
       // Request partitions of the topic.
-      val schema = nakadiTarget.schema
-      val uri = s"$schema://${nakadiTarget.host}/event-types/${nakadiTarget.eventType}/partitions"
+      val scheme = nakadiSource.uri.getScheme
+      val hostAndPot = s"${nakadiSource.uri.getHost}:${nakadiSource.uri.getPort}"
+      val uri = s"$scheme://$hostAndPot/event-types/${nakadiSource.eventType}/partitions"
       val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
       val request = HttpRequest(
         uri = uri,

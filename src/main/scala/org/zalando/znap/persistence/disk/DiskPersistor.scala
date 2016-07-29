@@ -5,16 +5,17 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.disk
+package org.zalando.znap.persistence.disk
 
 import java.io._
 
 import akka.actor.{ActorLogging, ActorRef, FSM, Props, Stash}
 import org.zalando.znap.config.{Config, SnapshotTarget}
-import org.zalando.znap.disk.DiskPersistor.{Data, State}
+import org.zalando.znap.persistence.disk.DiskPersistor.{Data, State}
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.objects.Partition
+import org.zalando.znap.persistence.PersistorCommands
 import org.zalando.znap.utils.{Json, UnexpectedMessageException}
 
 import scala.concurrent.duration.FiniteDuration
@@ -37,7 +38,7 @@ class DiskPersistor(target: SnapshotTarget,
   startWith(Initialization, NoData)
 
   when(Initialization) {
-    case Event(InitCommand, NoData) =>
+    case Event(PersistorCommands.Init, NoData) =>
       try {
         if (workingSnapshotDirectory.mkdir()) {
           log.info(s"Working snapshot directory for target $target ${workingSnapshotDirectory.getAbsoluteFile} created")
@@ -64,8 +65,8 @@ class DiskPersistor(target: SnapshotTarget,
 
       stay()
 
-    case Event(AcceptPartitionsCommand(partitions), NoData) =>
-      var partitionAndLastOffsetList: List[PartitionAndLastOffset] = Nil
+    case Event(PersistorCommands.AcceptPartitions(partitions), NoData) =>
+      var partitionAndLastOffsetList: List[PersistorCommands.PartitionAndLastOffset] = Nil
 
       try {
         partitions.foreach { p =>
@@ -74,7 +75,8 @@ class DiskPersistor(target: SnapshotTarget,
           if (partitionFile.createNewFile()) {
             log.info(s"Partition file $partitionFile created")
             partitionAndLastOffsetList =
-              PartitionAndLastOffset(p.partition, None) :: partitionAndLastOffsetList
+              PersistorCommands.PartitionAndLastOffset(p.partition, None) ::
+                partitionAndLastOffsetList
           } else {
             log.debug(s"Partition file $partitionFile exists, checking offsets")
             // TODO actually check offsets
@@ -82,7 +84,8 @@ class DiskPersistor(target: SnapshotTarget,
             val lastOffset: String = ???
 
             partitionAndLastOffsetList =
-              PartitionAndLastOffset(p.partition, Some(lastOffset)) :: partitionAndLastOffsetList
+              PersistorCommands.PartitionAndLastOffset(p.partition, Some(lastOffset)) ::
+                partitionAndLastOffsetList
           }
         }
       } catch {
@@ -90,7 +93,7 @@ class DiskPersistor(target: SnapshotTarget,
           throw new DiskException(ex)
       }
 
-      goto(WaitingForEventBatch) replying PartitionsAccepted(partitionAndLastOffsetList)
+      goto(WaitingForEventBatch) replying PersistorCommands.PartitionsAccepted(partitionAndLastOffsetList)
   }
 
   when(WaitingForEventBatch) {
@@ -114,7 +117,7 @@ class DiskPersistor(target: SnapshotTarget,
       }
       hashFS ! HashFS.Commands(commands)
       offsetWriter ! OffsetWriter.WriteOffset(cursor.partition, cursor.offset)
-      goto(PersistingEventBatch) using PersistingData(eventsPersisted = false, offsetsPersisted = false, sender())
+      goto(WritingEventBatch) using WritingEventBatchData(eventsPersisted = false, offsetsPersisted = false, sender())
 
     case Event(SnapshotCommand, NoData) =>
       val snapshotMaker = context.actorOf(Props(classOf[SnapshotMaker], target, workingSnapshotDirectory, targetSnapshotsDirectory))
@@ -122,28 +125,28 @@ class DiskPersistor(target: SnapshotTarget,
       goto(MakingSnapshot) using NoData
   }
 
-  when(PersistingEventBatch) {
+  when(WritingEventBatch) {
     case Event(_: EventBatch, _) =>
       stash()
       stay()
 
-    case Event(Ack, PersistingData(false, true, eventBatchSender)) if sender() == hashFS =>
+    case Event(Ack, WritingEventBatchData(false, true, eventBatchSender)) if sender() == hashFS =>
       log.debug("Event batch persisted")
       eventBatchSender ! Ack
 
       goto(WaitingForEventBatch) using NoData
 
-    case Event(Ack, persistingData @ PersistingData(false, false, _)) if sender() == hashFS =>
+    case Event(Ack, persistingData @ WritingEventBatchData(false, false, _)) if sender() == hashFS =>
       stay() using persistingData.copy(eventsPersisted = true)
 
 
-    case Event(Ack, PersistingData(true, false, eventBatchSender)) if sender() == offsetWriter =>
+    case Event(Ack, WritingEventBatchData(true, false, eventBatchSender)) if sender() == offsetWriter =>
       log.debug("Offset persisted")
       eventBatchSender ! Ack
 
       goto(WaitingForEventBatch) using NoData
 
-    case Event(Ack, persistingData @ PersistingData(false, false, _)) if sender() == offsetWriter =>
+    case Event(Ack, persistingData @ WritingEventBatchData(false, false, _)) if sender() == offsetWriter =>
       stay() using persistingData.copy(offsetsPersisted = true)
 
   }
@@ -161,7 +164,7 @@ class DiskPersistor(target: SnapshotTarget,
     case Initialization -> WaitingForEventBatch =>
       scheduleSnapshot()
 
-    case PersistingEventBatch -> WaitingForEventBatch =>
+    case WritingEventBatch -> WaitingForEventBatch =>
       if (mustSnapshot) {
         self ! SnapshotCommand
         mustSnapshot = false
@@ -180,8 +183,8 @@ class DiskPersistor(target: SnapshotTarget,
       stay()
 
     case Event(unexpected, _) =>
-      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData} and sender ${sender()}")
-      throw new UnexpectedMessageException(unexpected)
+      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData} from ${sender()}")
+      throw new UnexpectedMessageException(unexpected, sender())
   }
 
 
@@ -197,20 +200,14 @@ object DiskPersistor {
   sealed trait State
   private case object Initialization extends State
   private case object WaitingForEventBatch extends State
-  private case object PersistingEventBatch extends State
+  private case object WritingEventBatch extends State
   private case object MakingSnapshot extends State
 
   sealed trait Data
   private case object NoData extends Data
-  private final case class PersistingData(eventsPersisted: Boolean, offsetsPersisted: Boolean, eventBatchSender: ActorRef) extends Data
+  private final case class WritingEventBatchData(eventsPersisted: Boolean,
+                                                 offsetsPersisted: Boolean,
+                                                 eventBatchSender: ActorRef) extends Data
 
-  // Commands and theirs results
-
-  case object InitCommand
-
-  final case class AcceptPartitionsCommand(partitions: List[Partition])
-  final case class PartitionAndLastOffset(partition: String, lastOffset: Option[String])
-  final case class PartitionsAccepted(partitionAndLastOffsetList: List[PartitionAndLastOffset])
-
-  case object SnapshotCommand
+  private case object SnapshotCommand
 }

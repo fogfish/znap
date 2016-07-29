@@ -7,7 +7,6 @@
   */
 package org.zalando.znap.config
 
-import java.io.File
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneId}
 import java.util.UUID
@@ -15,6 +14,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import org.apache.http.client.utils.URIBuilder
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration.FiniteDuration
@@ -30,6 +30,10 @@ class Config {
   }
 
   // Application config.
+
+  object Akka {
+    val DynamoDBDispatcher = "dynamodb-dispatcher"
+  }
 
   private val appConfig = ConfigFactory
     .systemProperties()
@@ -89,22 +93,94 @@ class Config {
 
   // Snapshots config.
 
-  private val snapshotsConfig = appConfig.getString("znap.streams").split('|').toList
 
   val Targets: List[SnapshotTarget] = {
-    for {
-      uri <- snapshotsConfig
-    } yield {
-      val stream = ConfigStream(uri)
+    val snapshotsConfig = appConfig.getString("znap.streams").split('|').toList
+    snapshotsConfig.map(x => parseSnapshotConfig(x))
+  }
+//  {
+//    for {
+//      uri <- snapshotsConfig
+//    } yield {
+//      val stream = ConfigStream(uri)
+//
+//      stream.protocol match {
+//        case "nakadi" =>
+//          NakadiTarget(stream.schema, stream.host, stream.port, stream.stream)
+//
+//        case tt =>
+//          val message = s"Unknown target type $tt"
+//          logger.error(message)
+//          throw new Exception(message)
+//      }
+//    }
+//  }
 
-      stream.protocol match {
-        case "nakadi" =>
-          NakadiTarget(stream.schema, stream.host, stream.port, stream.stream)
-        case tt =>
-          val message = s"Unknown target type $tt"
-          logger.error(message)
-          throw new Exception(message)
+  private def parseSnapshotConfig(configString: String): SnapshotTarget = {
+    import scala.collection.JavaConversions._
+
+    val Array(protocol, rest) = configString.split("\\+", 2)
+    protocol match {
+      case "nakadi" =>
+        val restURIBuilder = new URIBuilder(rest)
+        val queryParams = restURIBuilder.getQueryParams.map { qp =>
+          qp.getName -> qp.getValue
+        }.toMap
+        restURIBuilder.removeQuery()
+
+        val eventType = restURIBuilder.getPath.drop(1)
+
+        restURIBuilder.setPath("")
+        restURIBuilder.setPort(resolvePort(restURIBuilder.getScheme, restURIBuilder.getPort))
+        val nakadiURI = restURIBuilder.build()
+
+        val eventClass = queryParams("event-class")
+        val key = queryParams("key").split('.').toList
+        val source = NakadiSource(nakadiURI, eventType, eventClass)
+
+        val dest = parseDestinaton(queryParams("to"))
+
+        SnapshotTarget(source, dest, key)
+    }
+  }
+
+  private def parseDestinaton(destString: String): SnapshotDestination = {
+    val Array(protocol, rest) = destString.split("\\+", 2)
+    protocol match {
+      case "dynamodb" =>
+        val restURIBuilder = new URIBuilder(rest)
+        restURIBuilder.setPort(resolvePort(restURIBuilder.getScheme, restURIBuilder.getPort))
+        DynamoDBDestination(restURIBuilder.build())
+    }
+  }
+
+  private def resolvePort(scheme: String, port: Int): Int =
+    (scheme, port) match {
+      case ("http", -1)  => 80
+      case ("https", -1) => 443
+      case _ => port
+    }
+
+  object DynamoDB {
+    object OffsetsTable {
+      val Name = "offsets"
+
+      object Attributes {
+        val TargetId = "target_id"
+        val Partition = "partition"
+        val Offset = "offset"
       }
+    }
+
+    object KVTables {
+      object Attributes {
+        val Key = "key"
+        val Value = "value"
+      }
+    }
+
+    object Batches {
+      val WriteBatchSize = 25
     }
   }
 }

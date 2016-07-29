@@ -13,7 +13,7 @@ import akka.actor.SupervisorStrategy.{Escalate, Stop}
 import akka.actor.{ActorLogging, ActorRef, FSM, OneForOneStrategy, Props, SupervisorStrategy}
 import akka.http.scaladsl.model.EntityStreamSizeException
 import NakadiReader._
-import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.utils.{ActorNames, ThrowableUtils, TimePeriodEventTracker, UnexpectedMessageException}
@@ -27,10 +27,10 @@ import scala.util.control.NonFatal
   */
 class NakadiReader(partition: String,
                    offsetOpt: Option[String],
-                   target: NakadiTarget,
+                   nakadiSource: NakadiSource,
                    config: Config,
                    tokens: NakadiTokens,
-                   diskPersistor: ActorRef) extends FSM[State, Unit] with ActorLogging {
+                   persistor: ActorRef) extends FSM[State, Unit] with ActorLogging {
   val errorTracker = new TimePeriodEventTracker(
     config.Supervision.NakadiReader.MaxFailures,
     config.Supervision.NakadiReader.Period
@@ -100,18 +100,21 @@ class NakadiReader(partition: String,
   var lastAckedOffset: Option[String] = offsetOpt
 
   override def preStart(): Unit = {
+    log.info(s"Nakadi reader for source ${nakadiSource.id} and partition $partition started")
     startWorker()
   }
 
   def startWorker(): Unit = {
     val workerRef = context.actorOf(
-      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, target, config, tokens),
-      s"NakadiReaderWorker-${target.id}-$partition-${ActorNames.randomPart()}"
+      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, config, tokens),
+      s"NakadiReaderWorker-${nakadiSource.id}-$partition-${ActorNames.randomPart()}"
     )
     worker = Some(workerRef)
   }
 
   startWith(WaitingForSeq, ())
+
+  var set = Set.empty[String]
 
   when(WaitingForSeq) {
     // An echo from a previous worker.
@@ -120,7 +123,8 @@ class NakadiReader(partition: String,
 
     case Event(batch: EventBatch, _) =>
       currentSentOffset = Some(batch.cursor.offset)
-      diskPersistor ! batch
+      persistor ! batch
+
       goto(WaitingForAck)
   }
 
@@ -144,8 +148,8 @@ class NakadiReader(partition: String,
 
   whenUnhandled {
     case Event(unexpected, _) =>
-      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData}")
-      throw new UnexpectedMessageException(unexpected)
+      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData} from ${sender()}")
+      throw new UnexpectedMessageException(unexpected, sender())
   }
 }
 

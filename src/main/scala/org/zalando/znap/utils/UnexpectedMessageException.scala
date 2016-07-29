@@ -7,4 +7,6 @@
   */
 package org.zalando.znap.utils
 
-class UnexpectedMessageException(msg: Any) extends Exception(s"Unexpected message received: $msg")
+import akka.actor.ActorRef
+
+class UnexpectedMessageException(msg: Any, sender: ActorRef) extends Exception(s"Unexpected message received from $sender: $msg")

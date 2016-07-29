@@ -1,4 +1,4 @@
-package org.zalando.znap.disk
+package org.zalando.znap.persistence.disk
 
 import java.io.{BufferedWriter, File, FileWriter, IOException}
 

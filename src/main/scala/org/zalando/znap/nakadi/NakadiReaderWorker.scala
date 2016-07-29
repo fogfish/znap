@@ -14,7 +14,7 @@ import akka.http.scaladsl.model.headers.{Authorization, OAuth2BearerToken}
 import akka.stream.scaladsl.{Sink, Source}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import org.zalando.znap.config.{Config, NakadiTarget}
+import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.NakadiReaderWorker._
 import org.zalando.znap.nakadi.objects.{Cursor, EventBatch}
@@ -25,7 +25,7 @@ import org.zalando.znap.utils.{Json, UnexpectedMessageException}
   */
 class NakadiReaderWorker(partition: String,
                          offsetOpt: Option[String],
-                         target: NakadiTarget,
+                         nakadiSource: NakadiSource,
                          config: Config,
                          tokens: NakadiTokens) extends FSM[State, Data] with ActorLogging {
 
@@ -37,17 +37,17 @@ class NakadiReaderWorker(partition: String,
     val offset = offsetOpt.getOrElse("BEGIN")
     log.info(s"Start consuming partition $partition from offset $offset")
 
-    val uri = s"/event-types/${target.eventType}/events" + "?stream_timeout=0"
+    val uri = s"/event-types/${nakadiSource.eventType}/events" + "?stream_timeout=0"
 
     val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
     val xNakadiCursor = new XNakadiCursors(partition, offset)
     val headers = List(authorizationHeader, xNakadiCursor)
 
     val nakadiConnectionFlow =
-      if (target.schema.equals("https")) {
-        Http(context.system).outgoingConnectionHttps(target.host, target.port)
+      if (nakadiSource.uri.getScheme.equals("https")) {
+        Http(context.system).outgoingConnectionHttps(nakadiSource.uri.getHost, nakadiSource.uri.getPort)
       } else {
-        Http(context.system).outgoingConnection(target.host, target.port)
+        Http(context.system).outgoingConnection(nakadiSource.uri.getHost, nakadiSource.uri.getPort)
       }
     val sink = Sink.actorRefWithAck(self, Init, Ack, StreamCompleted)
 
@@ -59,7 +59,13 @@ class NakadiReaderWorker(partition: String,
             .dataBytes
             .scan("")((acc, chunk) => if (acc.contains("\n")) chunk.utf8String else acc + chunk.utf8String)
             .filter(_.contains("\n"))
-            .map {(x) => Json.read[EventBatch](x)}
+            .map { x =>
+              val eventBatch = Json.read[EventBatch](x)
+              val filteredEvents = eventBatch.events.map { eventList =>
+                eventList.filter(e => e.eventClass == nakadiSource.eventClass)
+              }
+              EventBatch(eventBatch.cursor, filteredEvents)
+            }
 
         // If partitions are cleared on the backend, the local offset might become further.
         // To prevent this, we throw the special exception.
@@ -112,7 +118,8 @@ class NakadiReaderWorker(partition: String,
 
   whenUnhandled {
     case Event(unexpected, _) =>
-      throw new UnexpectedMessageException(unexpected)
+      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData} from ${sender()}")
+      throw new UnexpectedMessageException(unexpected, sender())
   }
 
   def handleBefore: StateFunction = {

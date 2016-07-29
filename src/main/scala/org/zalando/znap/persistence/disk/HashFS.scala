@@ -5,12 +5,12 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.disk
+package org.zalando.znap.persistence.disk
 
 import java.io._
 
 import akka.actor.{Actor, ActorLogging, ActorRef, FSM, Props}
-import org.zalando.znap.disk.HashFS._
+import org.zalando.znap.persistence.disk.HashFS._
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.utils.{EscalateEverythingSupervisorStrategy, NoUnexpectedMessages, UnexpectedMessageException}
 
@@ -52,8 +52,8 @@ class HashFS(root: File) extends FSM[State, Data] with ActorLogging {
 
   whenUnhandled {
     case Event(unexpected, _) =>
-      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData}")
-      throw new UnexpectedMessageException(unexpected)
+      log.error(s"Unexpected message $unexpected in state ${this.stateName} with data ${this.stateData} from ${sender()}")
+      throw new UnexpectedMessageException(unexpected, sender())
   }
 }
 

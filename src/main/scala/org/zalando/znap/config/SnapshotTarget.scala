@@ -7,16 +7,28 @@
   */
 package org.zalando.znap.config
 
-trait SnapshotTarget {
-  val id: String
+import java.net.URI
+
+sealed trait SnapshotSource {
+
 }
 
-// TODO: name eventType is confusing, this is name of stream
-// TODO: think to replace with ConfigStream
-final case class NakadiTarget(
-  schema: String,
-  host: String,
-  port: Int,
-  eventType: String) extends SnapshotTarget {
-  override val id: String = eventType
+final case class NakadiSource(uri: URI,
+                              eventType: String,
+                              eventClass: String) extends SnapshotSource {
+  val id: String = s"${eventType}_$eventClass"
+}
+
+sealed trait SnapshotDestination {
+
+}
+
+final case class DynamoDBDestination(url: URI) extends SnapshotDestination
+
+final case class SnapshotTarget(source: SnapshotSource,
+                                destination: SnapshotDestination,
+                                key: List[String]) {
+  val id: String = source match {
+    case nakadiSource: NakadiSource => nakadiSource.id
+  }
 }
