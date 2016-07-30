@@ -44,6 +44,7 @@ SenzaComponents:
       IamRoles:
          - Ref: ZnapRole
       AssociatePublicIpAddress: false
+      ElasticLoadBalancer: ZnapELB
       TaupageConfig:
          root: true
          application_id: "{{Arguments.AppId}}"
@@ -61,7 +62,7 @@ SenzaComponents:
       Type: Senza::WeightedDnsElasticLoadBalancer
       Scheme: internal
       HTTPPort: 8080
-#      HealthCheckPath: /health/ping
+      HealthCheckPath: /snapshots
       SecurityGroups:
          - Fn::GetAtt:
             - ZnapElbSg
@@ -125,3 +126,9 @@ Resources:
                      Action:
                         - s3:GetObject
                      Resource: arn:aws:s3:::{{Arguments.Mint}}/{{Arguments.AppId}}/*
+
+                  ## give read / write access to dynamodb
+                  -  Effect: Allow
+                     Action:
+                        - dynamodb:*
+                     Resource: "*"
