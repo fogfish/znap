@@ -9,10 +9,11 @@ package org.zalando.znap.nakadi
 
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.pattern.AskTimeoutException
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
+import org.zalando.znap.config.{NakadiSource, Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.nakadi.GetPartitionsWorker.Partitions
 import org.zalando.znap.persistence.PersistorCommands
 import org.zalando.znap.persistence.dynamo.DynamoPersistor
+import org.zalando.znap.service.{SnapshotEntityService, DynamoDBEntityReader}
 import org.zalando.znap.utils.{EscalateEverythingSupervisorStrategy, NoUnexpectedMessages}
 
 import scala.concurrent.duration.FiniteDuration
@@ -37,6 +38,14 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
       classOf[DynamoPersistor], snapshotTarget, config
     ))
   }
+
+  private val reader = snapshotTarget.destination match {
+    case dynamoDBDestination: DynamoDBDestination => context.actorOf(Props(
+      classOf[DynamoDBEntityReader], snapshotTarget, config
+    ))
+  }
+
+  private val service = context.actorOf(SnapshotEntityService.spec(reader), "entity")
 
   override def preStart(): Unit = {
     log.info(s"Starting snapshotter for target ${snapshotTarget.id}")
