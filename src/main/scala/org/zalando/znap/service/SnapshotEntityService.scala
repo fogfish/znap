@@ -7,26 +7,32 @@
   */
 package org.zalando.znap.service
 
-import akka.actor.{Actor, Props}
+import akka.actor.{ActorRef, Actor, Props}
 
 
 object SnapshotEntityService {
   type Commit = (String) => Unit
 
-  def spec() =
-    Props(new SnapshotEntityService())
+  def spec(reader: ActorRef) =
+    Props(classOf[SnapshotEntityService], reader)
 }
 
 
-class SnapshotEntityService extends PoolService {
-  override def props: Props = Props(new SnapshotEntityRequest())
+class SnapshotEntityService(reader: ActorRef) extends PoolService {
+  override def props: Props = Props(classOf[SnapshotEntityRequest], reader)
 }
 
 
-class SnapshotEntityRequest extends Actor {
+class SnapshotEntityRequest(reader: ActorRef) extends Actor {
+  var caller: ActorRef = _
+
   def receive = {
-    case commit: SnapshotEntityService.Commit =>
-      commit("entity")
+    case key: String =>
+      reader ! DynamoDBEntityReader.GetEntityCommand(key)
+      caller = sender()
+
+    case DynamoDBEntityReader.Entity(_, entity) =>
+      caller ! entity
       context.stop(self)
   }
 }

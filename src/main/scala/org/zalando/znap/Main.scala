@@ -37,12 +37,12 @@ object Main extends App {
   config.Targets.foreach {
     case target @ SnapshotTarget(source: NakadiSource, _, _) =>
       actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotter], target, config, tokens)
+        Props(classOf[NakadiTargetSnapshotter], target, config, tokens),
+        source.eventClass
       )
   }
 
   actorSystem.actorOf(SnapshotService.spec(), "snapshot")
-  actorSystem.actorOf(SnapshotEntityService.spec(), "snapshot-entity")
   actorSystem.actorOf(Props[Httpd])
 
 }
