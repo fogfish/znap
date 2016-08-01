@@ -9,12 +9,14 @@ package org.zalando.znap.persistence.dynamo
 
 import akka.actor.{Actor, ActorLogging}
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
-import org.zalando.znap.config.{Config, SnapshotTarget}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.utils.NoUnexpectedMessages
 
 class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
                         dynamoDB: DynamoDB,
                         config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
+
+  private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
 
   import GetOffsetsChannel._
 
@@ -22,7 +24,7 @@ class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
 
   override def receive: Receive = {
     case GetOffsetsCommand =>
-      val offsetsTable = dynamoDB.getTable(config.DynamoDB.OffsetsTable.Name)
+      val offsetsTable = dynamoDB.getTable(dynamoDBDestination.offsetsTableName)
       val queryResult = offsetsTable.query(config.DynamoDB.OffsetsTable.Attributes.TargetId, snapshotTarget.id)
 
       val iterator = queryResult.iterator()

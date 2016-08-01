@@ -18,7 +18,7 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
                            config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   private val client = new AmazonDynamoDBClient()
-  client.withEndpoint(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].url.toString)
+  client.withEndpoint(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].uri.toString)
 
   private val dynamoDB = new DynamoDB(client)
 

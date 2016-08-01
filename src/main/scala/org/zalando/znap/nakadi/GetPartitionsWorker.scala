@@ -43,8 +43,8 @@ class GetPartitionsWorker(nakadiSource: NakadiSource,
 
       // Request partitions of the topic.
       val scheme = nakadiSource.uri.getScheme
-      val hostAndPot = s"${nakadiSource.uri.getHost}:${nakadiSource.uri.getPort}"
-      val uri = s"$scheme://$hostAndPot/event-types/${nakadiSource.eventType}/partitions"
+      val hostAndPort = s"${nakadiSource.uri.getHost}:${nakadiSource.uri.getPort}"
+      val uri = s"$scheme://$hostAndPort/event-types/${nakadiSource.eventType}/partitions"
       val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
       val request = HttpRequest(
         uri = uri,

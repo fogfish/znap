@@ -9,17 +9,19 @@ package org.zalando.znap.persistence.dynamo
 
 import akka.actor.{Actor, ActorLogging}
 import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteItems}
-import org.zalando.znap.config.{Config, SnapshotTarget}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.nakadi.objects.{Cursor, EventBatch, NakadiEvent}
 import org.zalando.znap.persistence.dynamo.WriteEventBatchChannel.{BatchWritten, WriteBatchCommand}
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class WriteEventBatchChannel(target: SnapshotTarget,
+class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
                              dynamoDB: DynamoDB,
                              config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
 
+  private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
+
   override def preStart(): Unit = {
-    log.debug(s"WriteEventBatchChannel for target ${target.id} started. Dispatcher ${context.dispatcher}")
+    log.debug(s"WriteEventBatchChannel for target ${snapshotTarget.id} started. Dispatcher ${context.dispatcher}")
   }
 
   override def receive: Receive = {
@@ -35,17 +37,17 @@ class WriteEventBatchChannel(target: SnapshotTarget,
   }
 
   private def writeEventGroup(events: List[NakadiEvent]): Unit = {
-    val updateItems = new TableWriteItems(target.id)
+    val updateItems = new TableWriteItems(dynamoDBDestination.tableName)
 
     events.foreach { e =>
-      val key = target.key.foldLeft(e.body) { case (agg, k) =>
+      val key = snapshotTarget.key.foldLeft(e.body) { case (agg, k) =>
         agg.get(k)
       }.asText()
 
       val item = new Item()
         .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, key)
 
-      if (target.compress) {
+      if (snapshotTarget.compress) {
         item.withBinary(config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.body.toString))
       } else {
         item.withString(config.DynamoDB.KVTables.Attributes.Value, e.body.toString)
@@ -60,10 +62,10 @@ class WriteEventBatchChannel(target: SnapshotTarget,
   }
 
   private def writeOffsets(cursor: Cursor): Unit = {
-    val offsetUpdateItems = new TableWriteItems(config.DynamoDB.OffsetsTable.Name)
+    val offsetUpdateItems = new TableWriteItems(dynamoDBDestination.offsetsTableName)
     offsetUpdateItems.addItemToPut(new Item()
         .withPrimaryKey(
-          config.DynamoDB.OffsetsTable.Attributes.TargetId, target.id,
+          config.DynamoDB.OffsetsTable.Attributes.TargetId, snapshotTarget.id,
           config.DynamoDB.OffsetsTable.Attributes.Partition, cursor.partition)
         .withString(config.DynamoDB.OffsetsTable.Attributes.Offset, cursor.offset)
     )

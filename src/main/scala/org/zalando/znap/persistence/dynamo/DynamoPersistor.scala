@@ -23,8 +23,10 @@ class DynamoPersistor(snapshotTarget: SnapshotTarget,
 
   override val supervisorStrategy = new EscalateEverythingSupervisorStrategy
 
+  private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
+
   private val client = new AmazonDynamoDBClient()
-  client.withEndpoint(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].url.toString)
+  client.withEndpoint(dynamoDBDestination.uri.toString)
 
   private val dynamoDB = new DynamoDB(client)
 

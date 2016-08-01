@@ -8,14 +8,11 @@
 package org.zalando.znap
 
 import akka.actor.{ActorSystem, Props}
-import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.Connection
-import akka.stream.scaladsl.Sink
-import org.zalando.znap.nakadi.{NakadiTargetSnapshotter, NakadiTokens}
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, NakadiSource, SnapshotTarget}
+import org.zalando.znap.nakadi.{NakadiTargetSnapshotter, NakadiTokens}
 import org.zalando.znap.restapi.Httpd
-import org.zalando.znap.service.{SnapshotEntityService, SnapshotService}
+import org.zalando.znap.service.SnapshotService
 
 object Main extends App {
   val config = new Config()

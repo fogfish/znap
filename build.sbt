@@ -35,6 +35,7 @@ libraryDependencies ++= {
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
     "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.21",
+    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.22",
 
     "org.apache.commons" % "commons-compress" % "1.12",
 
