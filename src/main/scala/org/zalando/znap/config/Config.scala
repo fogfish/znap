@@ -90,7 +90,6 @@ class Config {
   }
 
 
-
   // Snapshots config.
 
 
@@ -98,23 +97,6 @@ class Config {
     val snapshotsConfig = appConfig.getString("znap.streams").split('|').toList
     snapshotsConfig.map(x => parseSnapshotConfig(x))
   }
-//  {
-//    for {
-//      uri <- snapshotsConfig
-//    } yield {
-//      val stream = ConfigStream(uri)
-//
-//      stream.protocol match {
-//        case "nakadi" =>
-//          NakadiTarget(stream.schema, stream.host, stream.port, stream.stream)
-//
-//        case tt =>
-//          val message = s"Unknown target type $tt"
-//          logger.error(message)
-//          throw new Exception(message)
-//      }
-//    }
-//  }
 
   private def parseSnapshotConfig(configString: String): SnapshotTarget = {
     import scala.collection.JavaConversions._
@@ -140,7 +122,9 @@ class Config {
 
         val dest = parseDestinaton(queryParams("to"))
 
-        SnapshotTarget(source, dest, key)
+        val compress = queryParams.get("compress").map(_.toLowerCase == "true").getOrElse(false)
+
+        SnapshotTarget(source, dest, key, compress)
     }
   }
 
