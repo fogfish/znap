@@ -45,7 +45,6 @@ scm-source.json: force
 docker:
 	docker build ${DFLAGS} -t ${URL}/${APP}:${VSN} .
 
-
 force:
 
 
