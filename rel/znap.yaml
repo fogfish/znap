@@ -18,9 +18,15 @@ SenzaInfo:
       - EC2:
          Description: "aws Instance type"
          Default: "t2.small"
+      - ENV:
+         Description: "environment name"
+         Default: dev
+         AllowedValues: ["dev", "ci", "stg", "live"]
       - AppId:
          Description: "Yourturn application id (see stups.io)"
          Default: znap
+      - FQDN:
+         Description: "fully qualified domain name"
       - Streams:
          Description: "Stream configurations"
       - Mint:
@@ -44,6 +50,7 @@ SenzaComponents:
       IamRoles:
          - Ref: ZnapRole
       AssociatePublicIpAddress: false
+      ElasticLoadBalancer: ZnapELB
       TaupageConfig:
          root: true
          application_id: "{{Arguments.AppId}}"
@@ -60,8 +67,9 @@ SenzaComponents:
    - ZnapELB:
       Type: Senza::WeightedDnsElasticLoadBalancer
       Scheme: internal
+      MainDomain: "{{Arguments.FQDN}}"
       HTTPPort: 8080
-#      HealthCheckPath: /health/ping
+      HealthCheckPath: /snapshots
       SecurityGroups:
          - Fn::GetAtt:
             - ZnapElbSg
@@ -125,3 +133,9 @@ Resources:
                      Action:
                         - s3:GetObject
                      Resource: arn:aws:s3:::{{Arguments.Mint}}/{{Arguments.AppId}}/*
+
+                  ## give read / write access to dynamodb
+                  -  Effect: Allow
+                     Action:
+                        - dynamodb:*
+                     Resource: "*"
