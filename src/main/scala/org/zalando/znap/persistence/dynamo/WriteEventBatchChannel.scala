@@ -12,7 +12,7 @@ import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteIte
 import org.zalando.znap.config.{Config, SnapshotTarget}
 import org.zalando.znap.nakadi.objects.{Cursor, EventBatch, NakadiEvent}
 import org.zalando.znap.persistence.dynamo.WriteEventBatchChannel.{BatchWritten, WriteBatchCommand}
-import org.zalando.znap.utils.NoUnexpectedMessages
+import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class WriteEventBatchChannel(target: SnapshotTarget,
                              dynamoDB: DynamoDB,
@@ -41,11 +41,17 @@ class WriteEventBatchChannel(target: SnapshotTarget,
       val key = target.key.foldLeft(e.body) { case (agg, k) =>
         agg.get(k)
       }.asText()
-      updateItems.addItemToPut(
-        new Item()
-          .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, key)
-          .withString(config.DynamoDB.KVTables.Attributes.Value, e.body.toString)
-      )
+
+      val item = new Item()
+        .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, key)
+
+      if (target.compress) {
+        item.withBinary(config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.body.toString))
+      } else {
+        item.withString(config.DynamoDB.KVTables.Attributes.Value, e.body.toString)
+      }
+
+      updateItems.addItemToPut(item)
     }
 
     if (updateItems.getItemsToPut.size() > 0) {
@@ -68,7 +74,6 @@ class WriteEventBatchChannel(target: SnapshotTarget,
     var outcome = dynamoDB.batchWriteItem(writeItems)
 
     do {
-
       // Check for unprocessed keys which could happen if you exceed provisioned throughput
 
       val unprocessedItems = outcome.getUnprocessedItems

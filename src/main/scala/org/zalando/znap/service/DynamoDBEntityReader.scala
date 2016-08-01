@@ -12,7 +12,7 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.service.DynamoDBEntityReader.{Entity, GetEntityCommand}
-import org.zalando.znap.utils.NoUnexpectedMessages
+import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
                            config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
@@ -30,7 +30,19 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
       if (item == null) {
         sender() ! Entity(key, None)
       } else {
-        val value = item.getString(config.DynamoDB.KVTables.Attributes.Value)
+        // Work with values based on theirs types.
+        // String - not compressed value, Array[Byte] (binary) - compressed.
+        val valueClass = item.getTypeOf(config.DynamoDB.KVTables.Attributes.Value)
+        val value =
+          if (valueClass == classOf[String]) {
+            item.getString(config.DynamoDB.KVTables.Attributes.Value)
+          } else if (valueClass == classOf[Array[Byte]]) {
+            val compressed = item.getBinary(config.DynamoDB.KVTables.Attributes.Value)
+            Compressor.decompress(compressed)
+          } else {
+            throw new Exception(s"Invalid type of value: ${valueClass.getName}")
+          }
+
         sender() ! Entity(key, Some(value))
       }
   }

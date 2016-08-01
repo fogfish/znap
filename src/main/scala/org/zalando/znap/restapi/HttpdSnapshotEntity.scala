@@ -20,6 +20,8 @@ import scala.concurrent.duration._
   *
   */
 trait HttpdSnapshotEntity {
+  import scala.language.postfixOps
+
   def sys: ActorSystem
   implicit val timeout: Timeout = 30 seconds
 

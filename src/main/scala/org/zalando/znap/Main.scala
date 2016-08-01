@@ -35,7 +35,7 @@ object Main extends App {
   }
 
   config.Targets.foreach {
-    case target @ SnapshotTarget(source: NakadiSource, _, _) =>
+    case target @ SnapshotTarget(source: NakadiSource, _, _, _) =>
       actorSystem.actorOf(
         Props(classOf[NakadiTargetSnapshotter], target, config, tokens),
         source.eventClass
