@@ -18,9 +18,15 @@ SenzaInfo:
       - EC2:
          Description: "aws Instance type"
          Default: "t2.small"
+      - ENV:
+         Description: "environment name"
+         Default: dev
+         AllowedValues: ["dev", "ci", "stg", "live"]
       - AppId:
          Description: "Yourturn application id (see stups.io)"
          Default: znap
+      - FQDN:
+         Description: "fully qualified domain name"
       - Streams:
          Description: "Stream configurations"
       - Mint:
@@ -61,6 +67,7 @@ SenzaComponents:
    - ZnapELB:
       Type: Senza::WeightedDnsElasticLoadBalancer
       Scheme: internal
+      MainDomain: "{{Arguments.FQDN}}"
       HTTPPort: 8080
       HealthCheckPath: /snapshots
       SecurityGroups:
