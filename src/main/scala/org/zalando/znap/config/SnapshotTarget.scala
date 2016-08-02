@@ -23,7 +23,9 @@ sealed trait SnapshotDestination {
 
 }
 
-final case class DynamoDBDestination(url: URI) extends SnapshotDestination
+final case class DynamoDBDestination(uri: URI,
+                                     tableName: String,
+                                     offsetsTableName: String) extends SnapshotDestination
 
 final case class SnapshotTarget(source: SnapshotSource,
                                 destination: SnapshotDestination,
