@@ -27,8 +27,8 @@ SenzaInfo:
          Default: znap
       - FQDN:
          Description: "fully qualified domain name"
-      - Streams:
-         Description: "Stream configurations"
+      - Config:
+         Description: "Ingress stream configurations"
       - Mint:
          Description: "Mint bucket identity (see stups.io)"
 
@@ -62,7 +62,7 @@ SenzaComponents:
          ports:
             8080: 8080
          environment:
-            ZNAP_STREAMS: "{{Arguments.Streams}}"
+            ZNAP_CONFIG_FILE: "{{Arguments.Config}}"
 
    - ZnapELB:
       Type: Senza::WeightedDnsElasticLoadBalancer
