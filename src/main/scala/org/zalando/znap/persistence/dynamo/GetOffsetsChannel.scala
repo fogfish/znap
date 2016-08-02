@@ -9,6 +9,7 @@ package org.zalando.znap.persistence.dynamo
 
 import akka.actor.{Actor, ActorLogging}
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
+import com.amazonaws.services.dynamodbv2.document.spec.{QuerySpec, ScanSpec}
 import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.utils.NoUnexpectedMessages
 
@@ -25,16 +26,12 @@ class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
   override def receive: Receive = {
     case GetOffsetsCommand =>
       val offsetsTable = dynamoDB.getTable(dynamoDBDestination.offsetsTableName)
-      val queryResult = offsetsTable.query(config.DynamoDB.OffsetsTable.Attributes.TargetId, snapshotTarget.id)
 
-      val iterator = queryResult.iterator()
-      while (iterator.hasNext) {
-        val item = iterator.next()
-      }
+      val items = offsetsTable.scan(new ScanSpec())
 
-      val offsetMap = queryResult.asScala.map { item =>
-        val partition = item.getString(config.DynamoDB.OffsetsTable.Attributes.Partition)
-        val offset = item.getString(config.DynamoDB.OffsetsTable.Attributes.Offset)
+      val offsetMap = items.asScala.map { item =>
+        val partition = item.getString(config.DynamoDB.KVTables.Attributes.Key)
+        val offset = item.getString(config.DynamoDB.KVTables.Attributes.Value)
         partition -> offset
       }.toMap
 

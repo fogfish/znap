@@ -63,11 +63,10 @@ class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
 
   private def writeOffsets(cursor: Cursor): Unit = {
     val offsetUpdateItems = new TableWriteItems(dynamoDBDestination.offsetsTableName)
+
     offsetUpdateItems.addItemToPut(new Item()
-        .withPrimaryKey(
-          config.DynamoDB.OffsetsTable.Attributes.TargetId, snapshotTarget.id,
-          config.DynamoDB.OffsetsTable.Attributes.Partition, cursor.partition)
-        .withString(config.DynamoDB.OffsetsTable.Attributes.Offset, cursor.offset)
+        .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, cursor.partition)
+        .withString(config.DynamoDB.KVTables.Attributes.Value, cursor.offset)
     )
     writeWithRetries(offsetUpdateItems)
   }
