@@ -61,6 +61,8 @@ class Config {
   val HttpStreamingMaxSize = appConfig.getBytes("http.streamingMaxSize")
 
   object Persistence {
+    val offsetTable = appConfig.getString("persistence.offsetTable")
+
     object Disk {
       val SnapshotInitTimeout = {
         val t = appConfig.getDuration("persistence.disk.snapshotInitTimeout")

@@ -27,8 +27,8 @@ SenzaInfo:
          Default: znap
       - FQDN:
          Description: "fully qualified domain name"
-      - Streams:
-         Description: "Stream configurations"
+      - Config:
+         Description: "definition of ingress streams within config file "
       - Mint:
          Description: "Mint bucket identity (see stups.io)"
 
@@ -62,7 +62,9 @@ SenzaComponents:
          ports:
             8080: 8080
          environment:
-            ZNAP_STREAMS: "{{Arguments.Streams}}"
+            ZNAP_OFFSET_TABLE:
+               - Ref: ZnapDynamoDB
+            ZNAP_CONFIG_FILE: "{{Arguments.Config}}"
 
    - ZnapELB:
       Type: Senza::WeightedDnsElasticLoadBalancer
@@ -139,3 +141,26 @@ Resources:
                      Action:
                         - dynamodb:*
                      Resource: "*"
+
+   ZnapDynamoDB:
+      Type: AWS::DynamoDB::Table
+      Properties:
+         AttributeDefinitions:
+            -
+               AttributeName: target_id
+               AttributeType: S
+            -
+               AttributeName: partition
+               AttributeType: S
+
+         KeySchema:
+            -
+               AttributeName: target_id
+               KeyType: HASH
+            -
+               AttributeName: partition
+               KeyType: RANGE
+
+         ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 50

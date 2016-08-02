@@ -24,7 +24,7 @@ class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
 
   override def receive: Receive = {
     case GetOffsetsCommand =>
-      val offsetsTable = dynamoDB.getTable(dynamoDBDestination.offsetsTableName)
+      val offsetsTable = dynamoDB.getTable(config.Persistence.offsetTable)
       val queryResult = offsetsTable.query(config.DynamoDB.OffsetsTable.Attributes.TargetId, snapshotTarget.id)
 
       val iterator = queryResult.iterator()
