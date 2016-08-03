@@ -146,14 +146,6 @@ class Config {
     }
 
   object DynamoDB {
-    object OffsetsTable {
-      object Attributes {
-        val TargetId = "target_id"
-        val Partition = "partition"
-        val Offset = "offset"
-      }
-    }
-
     object KVTables {
       object Attributes {
         val Key = "key"
