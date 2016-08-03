@@ -7,7 +7,7 @@
   */
 package org.zalando.znap.utils
 
-import akka.actor.{Actor, Terminated}
+import akka.actor.{ActorIdentity, Actor, Terminated}
 
 /**
   * Actor that throws [[UnexpectedMessageException]] in case of unhandled (unexpected) message.
@@ -19,6 +19,7 @@ trait NoUnexpectedMessages extends Actor {
     beforeUnhandled(message)
     message match {
       case Terminated(dead) ⇒ super.unhandled(message)
+      case _: ActorIdentity ⇒ super.unhandled(message)
       case _                ⇒ throw new UnexpectedMessageException(message, sender())
     }
   }

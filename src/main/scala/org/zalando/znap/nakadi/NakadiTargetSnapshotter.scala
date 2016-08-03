@@ -9,14 +9,14 @@ package org.zalando.znap.nakadi
 
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.pattern.AskTimeoutException
-import org.zalando.znap.config.{NakadiSource, Config, DynamoDBDestination, SnapshotTarget}
+import org.zalando.scarl._
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.nakadi.GetPartitionsWorker.Partitions
 import org.zalando.znap.persistence.PersistorCommands
 import org.zalando.znap.persistence.dynamo.DynamoPersistor
 import org.zalando.znap.service.{SnapshotEntityService, DynamoDBEntityReader}
 import org.zalando.znap.utils.{EscalateEverythingSupervisorStrategy, NoUnexpectedMessages}
-
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 
 /**
   * Root snapshotter for a Nakadi target.
@@ -39,13 +39,9 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
     ))
   }
 
-  private val reader = snapshotTarget.destination match {
-    case dynamoDBDestination: DynamoDBDestination => context.actorOf(Props(
-      classOf[DynamoDBEntityReader], snapshotTarget, config
-    ))
-  }
+  private val reader = context.actorOf(Props(classOf[NakadiTargetSnapshotReader], snapshotTarget, config), "reader")
 
-  private val service = context.actorOf(SnapshotEntityService.spec(reader), "entity")
+  private val service = context.actorOf(SnapshotEntityService.spec(context.actorSelection("reader/dynamodb")), "entity")
 
   override def preStart(): Unit = {
     log.info(s"Starting snapshotter for target ${snapshotTarget.id}")
@@ -102,4 +98,20 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
 object NakadiTargetSnapshotter {
   trait LocalTimeout
   final case class PersistorAcceptPartitionsTimeout(timeout: FiniteDuration) extends LocalTimeout
+}
+
+
+class NakadiTargetSnapshotReader(snapshotTarget: SnapshotTarget, config: Config) extends Supervisor {
+  override
+  def supervisorStrategy = strategyOneForOne(100000, 1 second)
+
+  def init = Seq(
+    Supervisor.Worker("dynamodb", dynamodb())
+  )
+
+  def dynamodb() =
+    snapshotTarget.destination match {
+      case dynamoDBDestination: DynamoDBDestination =>
+        Props(classOf[DynamoDBEntityReader], snapshotTarget, config)
+    }
 }

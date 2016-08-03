@@ -22,7 +22,7 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
 
   private val dynamoDB = new DynamoDB(client)
 
-  private val table = dynamoDB.getTable(snapshotTarget.id)
+  private val table = dynamoDB.getTable(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].tableName)
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
