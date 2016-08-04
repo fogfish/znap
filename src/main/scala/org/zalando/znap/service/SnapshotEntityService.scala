@@ -8,36 +8,18 @@
 package org.zalando.znap.service
 
 import akka.actor._
-
-import scala.annotation.tailrec
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import scala.util._
+import org.zalando.scarl.Supervisor
 
 
 object SnapshotEntityService {
-  type Commit = (String) => Unit
-
   def spec(pid: ActorSelection) =
     Props(classOf[SnapshotEntityService], pid)
 }
 
-
 class SnapshotEntityService(pid: ActorSelection) extends PoolService {
 
-  @tailrec
-  private
-  def resolve(pid: ActorSelection): ActorRef = {
-    Try(Await.result(pid.resolveOne(5 second), Duration.Inf)) match {
-      case Failure(_: ActorNotFound) =>
-        resolve(pid)
-      case Success(ref: ActorRef) =>
-        ref
-    }
-  }
-
   override def props: Props =
-    Props(classOf[SnapshotEntityRequest], resolve(pid))
+    Props(classOf[SnapshotEntityRequest], Supervisor.resolve(pid))
 }
 
 

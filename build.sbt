@@ -30,7 +30,7 @@ libraryDependencies ++= {
     "com.typesafe" % "config" % "1.3.0",
 
     "org.zalando.stups" % "tokens" % "0.9.9",
-    "org.zalando" % "scarl_2.11" % "0.1.0",
+    "org.zalando" % "scarl_2.11" % "0.1.1",
     // Required for stups tokens
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",

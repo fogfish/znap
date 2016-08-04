@@ -10,9 +10,10 @@ package org.zalando.znap
 import akka.actor.{ActorSystem, Props}
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, NakadiSource, SnapshotTarget}
-import org.zalando.znap.nakadi.{NakadiTargetSnapshotter, NakadiTokens}
+import org.zalando.znap.nakadi.{NakadiTargetSnapshotterSup, NakadiTokens}
 import org.zalando.znap.restapi.Httpd
 import org.zalando.znap.service.SnapshotService
+import org.zalando.znap.service.queue.QueueService
 
 object Main extends App {
   val config = new Config()
@@ -31,10 +32,16 @@ object Main extends App {
     tokens.stop()
   }
 
+  //
+  // spawn ingress queue coordinator processes
+  actorSystem.actorOf(QueueService.spec(config.Targets, config, tokens), QueueService.id)
+
+  //
+  // spawn ingress streams
   config.Targets.foreach {
     case target @ SnapshotTarget(source: NakadiSource, _, _, _) =>
       actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotter], target, config, tokens),
+        Props(classOf[NakadiTargetSnapshotterSup], target, config, tokens),
         source.eventClass
       )
   }

@@ -9,6 +9,8 @@ package org.zalando.znap.config
 
 import java.net.URI
 
+import org.zalando.znap.nakadi.OAuth
+
 sealed trait SnapshotSource {
 
 }
