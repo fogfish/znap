@@ -48,9 +48,9 @@ class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
         .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, key)
 
       if (snapshotTarget.compress) {
-        item.withBinary(config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.body.toString))
+        item.withBinary(config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.toString))
       } else {
-        item.withString(config.DynamoDB.KVTables.Attributes.Value, e.body.toString)
+        item.withString(config.DynamoDB.KVTables.Attributes.Value, e.toString)
       }
 
       updateItems.addItemToPut(item)
