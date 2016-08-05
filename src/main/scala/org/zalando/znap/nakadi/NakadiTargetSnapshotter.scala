@@ -9,6 +9,7 @@ package org.zalando.znap.nakadi
 
 import akka.actor._
 import akka.pattern.AskTimeoutException
+import org.zalando.scarl.Supervisor.Specs
 import org.zalando.scarl._
 import org.zalando.znap.config.{NakadiSource, Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.nakadi.GetPartitionsWorker.Partitions
@@ -23,32 +24,17 @@ import scala.concurrent.duration._
   * snapshot management subsystem
   *
   */
-class NakadiTargetSnapshotterSup(
-  snapshotTarget: SnapshotTarget,
-  tokens: NakadiTokens) extends Supervisor {
+class NakadiTargetSnapshotterRoot(snapshot: SnapshotTarget, tokens: NakadiTokens) extends Supervisor {
 
   override
   val supervisorStrategy = strategyOneForOne(5, 30.seconds)
 
-  def init = Seq(writer(), reader(), service(), leader())
-
-  def writer() =
-    snapshotTarget.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
-        Supervisor.Worker("writer",
-          Props(classOf[DynamoPersistor], snapshotTarget))
-    }
-
-  def reader() =
-    Supervisor.Supervisor("reader",
-      Props(classOf[NakadiTargetSnapshotReader], snapshotTarget))
-
-  def service() =
-    Supervisor.Worker("entity", SnapshotEntityService.spec(context.actorSelection("reader/dynamodb")))
-
-  def leader() =
-    Supervisor.Worker("leader",
-      Props(classOf[NakadiTargetSnapshotter], snapshotTarget, tokens))
+  def specs = Seq(
+    Specs("sink", Props(classOf[DynamoPersistor], snapshot)),
+    Specs("reader", Props(classOf[NakadiTargetSnapshotReader], snapshot)),
+    SnapshotEntityService.spec(context.actorSelection("reader/dynamodb")),
+    Specs("coordinator", Props(classOf[NakadiTargetSnapshotter], snapshot, tokens))
+  )
 }
 
 
@@ -59,21 +45,21 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
   override val supervisorStrategy = new EscalateEverythingSupervisorStrategy
 
   import NakadiTargetSnapshotter._
-  import akka.pattern.{ask, pipe}
+  import akka.pattern._
   import context.dispatcher
   import org.zalando.znap.utils._
+  import org.zalando.scarl.ScarlRef
 
-  private val persistor = Supervisor.child(context.parent, "writer")(context.system).get
-
+  // DI via supervisor
+  private val persistor = context.parent.lookup("sink")(context.system).get
 
   override def preStart(): Unit = {
     log.info(s"Starting snapshotter for target ${snapshotTarget.id}")
 
     implicit val timeout = Config.DefaultAskTimeout
 
-    val pool = snapshotTarget.source.asInstanceOf[NakadiSource].uri.getAuthority
-    val f = QueueService.pool(pool)(context.system) ? GetPartitionsWorker.GetPartitionsCommand
-    f.pipeTo(self)
+    val pool = snapshotTarget.source.asInstanceOf[NakadiSource].uri
+    QueueService.pool(pool)(context.system) map {_ ? GetPartitionsWorker.GetPartitionsCommand pipeTo self}
 
     persistor ! PersistorCommands.Init
   }
@@ -127,11 +113,7 @@ class NakadiTargetSnapshotReader(snapshotTarget: SnapshotTarget) extends Supervi
   override
   def supervisorStrategy = strategyFailSafe()
 
-  def init = Seq(dynamodb())
-
-  def dynamodb() =
-    snapshotTarget.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
-        Supervisor.Worker("dynamodb", Props(classOf[DynamoDBEntityReader], snapshotTarget))
-    }
+  def specs = Seq(
+    Specs("dynamodb", Props(classOf[DynamoDBEntityReader], snapshotTarget))
+  )
 }

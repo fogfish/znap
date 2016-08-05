@@ -14,7 +14,7 @@ import scala.concurrent.duration._
 trait PoolService extends Actor {
 
   override val supervisorStrategy =
-    OneForOneStrategy(maxNrOfRetries = 0, withinTimeRange = 1 seconds) {
+    OneForOneStrategy(maxNrOfRetries = 0, withinTimeRange = 1.seconds) {
       case _: Exception => Stop
     }
 

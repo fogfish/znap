@@ -16,12 +16,14 @@ import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with NoUnexpectedMessages with ActorLogging {
 
+  private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
+
   private val client = new AmazonDynamoDBClient()
-  client.withEndpoint(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].uri.toString)
+  client.withEndpoint(dynamoDBDestination.uri.toString)
 
   private val dynamoDB = new DynamoDB(client)
 
-  private val table = dynamoDB.getTable(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].tableName)
+  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>

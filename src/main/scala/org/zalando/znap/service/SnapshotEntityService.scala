@@ -8,18 +8,19 @@
 package org.zalando.znap.service
 
 import akka.actor._
-import org.zalando.scarl.Supervisor
+import org.zalando.scarl.Supervisor.Specs
 
 
 object SnapshotEntityService {
   def spec(pid: ActorSelection) =
-    Props(classOf[SnapshotEntityService], pid)
+    Specs(classOf[SnapshotEntityService].getSimpleName, Props(classOf[SnapshotEntityService], pid))
 }
 
 class SnapshotEntityService(pid: ActorSelection) extends PoolService {
+  import org.zalando.scarl.ScarlSelection
 
   override def props: Props =
-    Props(classOf[SnapshotEntityRequest], Supervisor.resolve(pid))
+    Props(classOf[SnapshotEntityRequest], pid.resolve())
 }
 
 

@@ -9,44 +9,47 @@ package org.zalando.znap
 
 import akka.actor.{ActorSystem, Props}
 import org.slf4j.LoggerFactory
+import org.zalando.scarl.RootSupervisor
+import org.zalando.scarl.ScarlSupervisor
+import org.zalando.scarl.Supervisor.Specs
 import org.zalando.znap.config.{Config, NakadiSource, SnapshotTarget}
-import org.zalando.znap.nakadi.{NakadiTargetSnapshotterSup, NakadiTokens}
+import org.zalando.znap.nakadi.{OAuth, NakadiTargetSnapshotter, NakadiTokens}
 import org.zalando.znap.restapi.Httpd
 import org.zalando.znap.service.SnapshotService
 import org.zalando.znap.service.queue.QueueService
+import org.zalando.znap.service.stream.StreamService
+import scala.concurrent.duration._
+
 
 object Main extends App {
+  private val uid = "znap"
+
   Config
 
   implicit val logger = LoggerFactory.getLogger(Main.getClass)
   logger.info(s"Application instance started with ID ${Config.ApplicationInstanceId}")
 
-//  new Bootstrapper(config).bootstrap()
-
   val tokens = new NakadiTokens()
 
-  implicit val actorSystem = ActorSystem("znap")
+  implicit val actorSystem = ActorSystem(uid)
 
   actorSystem.registerOnTermination {
     LoggerFactory.getLogger(Main.getClass).info("Stopping token refreshing")
     tokens.stop()
   }
 
-  //
-  // spawn ingress queue coordinator processes
-  actorSystem.actorOf(QueueService.spec(Config.Targets, tokens), QueueService.id)
+  actorSystem.rootSupervisor(
+    Specs(uid, Props(classOf[SubSystemsSupervisor], tokens))
+  )
+}
 
-  //
-  // spawn ingress streams
-  Config.Targets.foreach {
-    case target @ SnapshotTarget(source: NakadiSource, _, _, _) =>
-      actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotterSup], target, tokens),
-        source.eventClass
-      )
-  }
+class SubSystemsSupervisor(oauth: OAuth) extends RootSupervisor {
+  override
+  def supervisorStrategy = strategyOneForOne(3, 2.hours)
 
-  actorSystem.actorOf(SnapshotService.spec(), "snapshot")
-  actorSystem.actorOf(Props[Httpd])
-
+  def specs = Seq(
+      QueueService.spec(oauth),
+      StreamService.spec(oauth),
+      Specs("httpd", Props[Httpd])
+  )
 }
