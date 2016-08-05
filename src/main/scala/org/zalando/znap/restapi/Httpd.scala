@@ -59,7 +59,7 @@ class Httpd(config: Config) extends Actor with ActorLogging {
       }
 
     val healthCheck =
-      path("healthcheck" / Segment) {
+      path("health" / "ping") {
         get {
           complete("ok")
         }
