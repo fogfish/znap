@@ -20,14 +20,13 @@ import org.zalando.znap.utils.{Json, UnexpectedMessageException}
 
 import scala.concurrent.duration.FiniteDuration
 
-class DiskPersistor(target: SnapshotTarget,
-                    config: Config) extends FSM[State, Data] with Stash with ActorLogging {
+class DiskPersistor(target: SnapshotTarget) extends FSM[State, Data] with Stash with ActorLogging {
 
   import DiskPersistor._
 
-  private val instanceDir = new File(config.Persistence.Disk.Paths.WorkingDirectory, config.ApplicationInstanceId)
+  private val instanceDir = new File(Config.Persistence.Disk.Paths.WorkingDirectory, Config.ApplicationInstanceId)
   private val workingSnapshotDirectory = new File(instanceDir, target.id)
-  private val snapshotsDirectory = new File(config.Persistence.Disk.Paths.SnapshotsDirectory)
+  private val snapshotsDirectory = new File(Config.Persistence.Disk.Paths.SnapshotsDirectory)
   private val targetSnapshotsDirectory = new File(snapshotsDirectory, target.id)
 
   private val hashFS = context.actorOf(Props(classOf[HashFS], workingSnapshotDirectory))
@@ -48,7 +47,7 @@ class DiskPersistor(target: SnapshotTarget,
           throw new DiskException(message)
         }
 
-        val snapshotDirectory = new File(config.Persistence.Disk.Paths.SnapshotsDirectory, target.id)
+        val snapshotDirectory = new File(Config.Persistence.Disk.Paths.SnapshotsDirectory, target.id)
         if (!snapshotDirectory.exists()) {
           log.info(s"No last snapshot for target $target: snapshot directory ${snapshotDirectory.getAbsoluteFile} doesn't exists")
         } else if (snapshotDirectory.list().isEmpty) {
@@ -107,7 +106,6 @@ class DiskPersistor(target: SnapshotTarget,
 
         if (sku == null || sku == "") {
           println(event)
-          println("Aaaaa")
         }
 
         assert(sku != null)

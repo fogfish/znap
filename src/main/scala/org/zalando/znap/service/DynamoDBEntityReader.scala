@@ -14,8 +14,7 @@ import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.service.DynamoDBEntityReader.{Entity, GetEntityCommand}
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
-                           config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
+class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   private val client = new AmazonDynamoDBClient()
   client.withEndpoint(snapshotTarget.destination.asInstanceOf[DynamoDBDestination].uri.toString)
@@ -26,18 +25,18 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget,
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
-      val item = table.getItem(config.DynamoDB.KVTables.Attributes.Key, key)
+      val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
       if (item == null) {
         sender() ! Entity(key, None)
       } else {
         // Work with values based on theirs types.
         // String - not compressed value, Array[Byte] (binary) - compressed.
-        val valueClass = item.getTypeOf(config.DynamoDB.KVTables.Attributes.Value)
+        val valueClass = item.getTypeOf(Config.DynamoDB.KVTables.Attributes.Value)
         val value =
           if (valueClass == classOf[String]) {
-            item.getString(config.DynamoDB.KVTables.Attributes.Value)
+            item.getString(Config.DynamoDB.KVTables.Attributes.Value)
           } else if (valueClass == classOf[Array[Byte]]) {
-            val compressed = item.getBinary(config.DynamoDB.KVTables.Attributes.Value)
+            val compressed = item.getBinary(Config.DynamoDB.KVTables.Attributes.Value)
             Compressor.decompress(compressed)
           } else {
             throw new Exception(s"Invalid type of value: ${valueClass.getName}")

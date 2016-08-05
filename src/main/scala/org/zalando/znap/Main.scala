@@ -16,14 +16,14 @@ import org.zalando.znap.service.SnapshotService
 import org.zalando.znap.service.queue.QueueService
 
 object Main extends App {
-  val config = new Config()
+  Config
 
   implicit val logger = LoggerFactory.getLogger(Main.getClass)
-  logger.info(s"Application instance started with ID ${config.ApplicationInstanceId}")
+  logger.info(s"Application instance started with ID ${Config.ApplicationInstanceId}")
 
 //  new Bootstrapper(config).bootstrap()
 
-  val tokens = new NakadiTokens(config)
+  val tokens = new NakadiTokens()
 
   implicit val actorSystem = ActorSystem("znap")
 
@@ -34,14 +34,14 @@ object Main extends App {
 
   //
   // spawn ingress queue coordinator processes
-  actorSystem.actorOf(QueueService.spec(config.Targets, config, tokens), QueueService.id)
+  actorSystem.actorOf(QueueService.spec(Config.Targets, tokens), QueueService.id)
 
   //
   // spawn ingress streams
-  config.Targets.foreach {
+  Config.Targets.foreach {
     case target @ SnapshotTarget(source: NakadiSource, _, _, _) =>
       actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotterSup], target, config, tokens),
+        Props(classOf[NakadiTargetSnapshotterSup], target, tokens),
         source.eventClass
       )
   }

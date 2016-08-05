@@ -19,10 +19,10 @@ trait OAuth {
   def token(scope: String): String
 }
 
-class NakadiTokens(config: Config) extends OAuth {
+class NakadiTokens() extends OAuth {
   private val tokens = {
-    Tokens.createAccessTokensWithUri(new URI(config.Tokens.AccessToken))
-      .tokenInfoUri(new URI(config.Tokens.TokenInfo))
+    Tokens.createAccessTokensWithUri(new URI(Config.Tokens.AccessToken))
+      .tokenInfoUri(new URI(Config.Tokens.TokenInfo))
       .manageToken("nakadi").addScope("uid").done()
 //      .manageToken("nakadi").addScope("nakadi.event_stream.read").done()
       .start()

@@ -28,12 +28,11 @@ import scala.util.control.NonFatal
 class NakadiReader(partition: String,
                    offsetOpt: Option[String],
                    nakadiSource: NakadiSource,
-                   config: Config,
                    tokens: NakadiTokens,
                    persistor: ActorRef) extends FSM[State, Unit] with ActorLogging {
   val errorTracker = new TimePeriodEventTracker(
-    config.Supervision.NakadiReader.MaxFailures,
-    config.Supervision.NakadiReader.Period
+    Config.Supervision.NakadiReader.MaxFailures,
+    Config.Supervision.NakadiReader.Period
   )
   override def supervisorStrategy: SupervisorStrategy = {
     OneForOneStrategy() {
@@ -106,7 +105,7 @@ class NakadiReader(partition: String,
 
   def startWorker(): Unit = {
     val workerRef = context.actorOf(
-      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, config, tokens),
+      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, tokens),
       s"NakadiReaderWorker-${nakadiSource.id}-$partition-${ActorNames.randomPart()}"
     )
     worker = Some(workerRef)

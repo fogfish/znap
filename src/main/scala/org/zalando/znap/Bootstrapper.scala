@@ -15,7 +15,7 @@ import org.zalando.znap.config.Config
 /**
   * For initial directory bootstrapping.
   */
-class Bootstrapper(config: Config) {
+class Bootstrapper {
   private val logger = LoggerFactory.getLogger(classOf[Bootstrapper])
 
   private class SnapshotFileFilter(eventType: String) extends FileFilter {
@@ -33,7 +33,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupWorkingDirectory(): Unit = {
-    val workingDir = new File(config.Persistence.Disk.Paths.WorkingDirectory)
+    val workingDir = new File(Config.Persistence.Disk.Paths.WorkingDirectory)
     if (!workingDir.exists()) {
       if (workingDir.mkdir()) {
         logger.info(s"Working directory ${workingDir.getAbsoluteFile} doesn't exist, created")
@@ -48,7 +48,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupInstanceDirectory(): Unit = {
-    val instanceDir = new File(config.Persistence.Disk.Paths.WorkingDirectory, config.ApplicationInstanceId)
+    val instanceDir = new File(Config.Persistence.Disk.Paths.WorkingDirectory, Config.ApplicationInstanceId)
     if (instanceDir.exists()) {
       val message = s"Instance directory ${instanceDir.getAbsoluteFile} exists"
       logger.error(message)
@@ -65,7 +65,7 @@ class Bootstrapper(config: Config) {
   }
 
   private def setupSnapshotsDirectory(): Unit = {
-    val snapshotsDirectory = new File(config.Persistence.Disk.Paths.SnapshotsDirectory)
+    val snapshotsDirectory = new File(Config.Persistence.Disk.Paths.SnapshotsDirectory)
     if (!snapshotsDirectory.exists()) {
       if (snapshotsDirectory.mkdir()) {
         logger.info(s"Snapshots directory ${snapshotsDirectory.getAbsoluteFile} doesn't exist, created")

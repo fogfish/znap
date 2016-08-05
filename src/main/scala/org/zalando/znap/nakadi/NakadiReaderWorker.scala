@@ -26,7 +26,6 @@ import org.zalando.znap.utils.{Json, UnexpectedMessageException}
 class NakadiReaderWorker(partition: String,
                          offsetOpt: Option[String],
                          nakadiSource: NakadiSource,
-                         config: Config,
                          tokens: NakadiTokens) extends FSM[State, Data] with ActorLogging {
 
   import NakadiReader._
@@ -55,7 +54,7 @@ class NakadiReaderWorker(partition: String,
       .via(nakadiConnectionFlow)
       .flatMapConcat {
         case HttpResponse(StatusCodes.OK, _, entity, _) =>
-          entity.withSizeLimit(config.HttpStreamingMaxSize)
+          entity.withSizeLimit(Config.HttpStreamingMaxSize)
             .dataBytes
             .scan("")((acc, chunk) => if (acc.contains("\n")) chunk.utf8String else acc + chunk.utf8String)
             .filter(_.contains("\n"))

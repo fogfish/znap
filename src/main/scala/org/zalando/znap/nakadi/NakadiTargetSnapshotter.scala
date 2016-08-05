@@ -25,11 +25,10 @@ import scala.concurrent.duration._
   */
 class NakadiTargetSnapshotterSup(
   snapshotTarget: SnapshotTarget,
-  config: Config,
   tokens: NakadiTokens) extends Supervisor {
 
   override
-  val supervisorStrategy = strategyOneForOne(5, 300 seconds)
+  val supervisorStrategy = strategyOneForOne(5, 30.seconds)
 
   def init = Seq(writer(), reader(), service(), leader())
 
@@ -37,24 +36,23 @@ class NakadiTargetSnapshotterSup(
     snapshotTarget.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
         Supervisor.Worker("writer",
-          Props(classOf[DynamoPersistor], snapshotTarget, config))
+          Props(classOf[DynamoPersistor], snapshotTarget))
     }
 
   def reader() =
     Supervisor.Supervisor("reader",
-      Props(classOf[NakadiTargetSnapshotReader], snapshotTarget, config))
+      Props(classOf[NakadiTargetSnapshotReader], snapshotTarget))
 
   def service() =
     Supervisor.Worker("entity", SnapshotEntityService.spec(context.actorSelection("reader/dynamodb")))
 
   def leader() =
     Supervisor.Worker("leader",
-      Props(classOf[NakadiTargetSnapshotter], snapshotTarget, config, tokens))
+      Props(classOf[NakadiTargetSnapshotter], snapshotTarget, tokens))
 }
 
 
 class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
-                              config: Config,
                               tokens: NakadiTokens) extends Actor
     with NoUnexpectedMessages with ActorLogging {
 
@@ -71,7 +69,7 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
   override def preStart(): Unit = {
     log.info(s"Starting snapshotter for target ${snapshotTarget.id}")
 
-    implicit val timeout = config.DefaultAskTimeout
+    implicit val timeout = Config.DefaultAskTimeout
 
     val pool = snapshotTarget.source.asInstanceOf[NakadiSource].uri.getAuthority
     val f = QueueService.pool(pool)(context.system) ? GetPartitionsWorker.GetPartitionsCommand
@@ -86,9 +84,9 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
       persistor ! PersistorCommands.AcceptPartitions(partitions)
 
       context.system.scheduler.scheduleOnce(
-        config.Persistence.Disk.SnapshotInitTimeout,
+        Config.Persistence.Disk.SnapshotInitTimeout,
         self,
-        PersistorAcceptPartitionsTimeout(config.Persistence.Disk.SnapshotInitTimeout))
+        PersistorAcceptPartitionsTimeout(Config.Persistence.Disk.SnapshotInitTimeout))
 
     case PersistorCommands.PartitionsAccepted(partitionAndLastOffsetList) =>
       partitionAndLastOffsetList.foreach { partitionAndLastOffset =>
@@ -97,7 +95,7 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
             partitionAndLastOffset.partition,
             // TODO: make initial offset configurable (e.g. restart from start)
             partitionAndLastOffset.lastOffset,
-            snapshotTarget.source, config, tokens,
+            snapshotTarget.source, tokens,
             persistor),
           s"NakadiReader-${snapshotTarget.id}-${partitionAndLastOffset.partition}-${partitionAndLastOffset.lastOffset.getOrElse("BEGIN")}-${ActorNames.randomPart()}"
         )
@@ -125,7 +123,7 @@ object NakadiTargetSnapshotter {
 }
 
 
-class NakadiTargetSnapshotReader(snapshotTarget: SnapshotTarget, config: Config) extends Supervisor {
+class NakadiTargetSnapshotReader(snapshotTarget: SnapshotTarget) extends Supervisor {
   override
   def supervisorStrategy = strategyFailSafe()
 
@@ -134,6 +132,6 @@ class NakadiTargetSnapshotReader(snapshotTarget: SnapshotTarget, config: Config)
   def dynamodb() =
     snapshotTarget.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
-        Supervisor.Worker("dynamodb", Props(classOf[DynamoDBEntityReader], snapshotTarget, config))
+        Supervisor.Worker("dynamodb", Props(classOf[DynamoDBEntityReader], snapshotTarget))
     }
 }

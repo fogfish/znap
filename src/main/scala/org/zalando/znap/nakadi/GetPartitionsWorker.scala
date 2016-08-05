@@ -24,14 +24,13 @@ import scala.concurrent.duration.FiniteDuration
 /**
   * Actor that gets partitions information from Nakadi.
   */
-class NakadiQueueService(source: NakadiSource, config: Config, oauth: OAuth) extends PoolService {
+class NakadiQueueService(source: NakadiSource, oauth: OAuth) extends PoolService {
 
   override def props: Props =
-    Props(classOf[GetPartitionsWorker], source, config, oauth)
+    Props(classOf[GetPartitionsWorker], source, oauth)
 }
 
 class GetPartitionsWorker(nakadiSource: NakadiSource,
-                          config: Config,
                           oauth: OAuth) extends Actor
     with NoUnexpectedMessages with ActorLogging {
 
@@ -75,7 +74,7 @@ class GetPartitionsWorker(nakadiSource: NakadiSource,
       } pipeTo self
 
       timer = Some(context.system.scheduler.scheduleOnce(
-        config.Nakadi.PartitionsReadTimeout, self, Timeout(config.Nakadi.PartitionsReadTimeout)))
+        Config.Nakadi.PartitionsReadTimeout, self, Timeout(Config.Nakadi.PartitionsReadTimeout)))
 
       context.become(waitingForResponse(sender()))
   }
