@@ -69,7 +69,7 @@ SenzaComponents:
       Scheme: internal
       MainDomain: "{{Arguments.FQDN}}"
       HTTPPort: 8080
-      HealthCheckPath: /snapshots
+      HealthCheckPath: /health/ping
       SecurityGroups:
          - Fn::GetAtt:
             - ZnapElbSg
