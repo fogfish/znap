@@ -27,11 +27,9 @@ final case class DynamoDBDestination(uri: URI,
                                      tableName: String,
                                      offsetsTableName: String) extends SnapshotDestination
 
-final case class SnapshotTarget(source: SnapshotSource,
+final case class SnapshotTarget(id: String,
+                                source: SnapshotSource,
                                 destination: SnapshotDestination,
                                 key: List[String],
                                 compress: Boolean) {
-  val id: String = source match {
-    case nakadiSource: NakadiSource => nakadiSource.id
-  }
 }

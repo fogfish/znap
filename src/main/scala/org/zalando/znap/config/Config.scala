@@ -103,6 +103,8 @@ class Config {
   }
 
   private def readSnapshotTarget(configObject: TypesafeConfig): SnapshotTarget = {
+    val id = configObject.getString("id")
+
     val source = {
       val sourceConfig = configObject.getObject("source").toConfig
       sourceConfig.getString("type") match {
@@ -135,7 +137,7 @@ class Config {
     val key = configObject.getString("key").split('.').toList
     val compress = configObject.getBoolean("compress")
 
-    SnapshotTarget(source, destination, key, compress)
+    SnapshotTarget(id, source, destination, key, compress)
   }
 
   private def resolvePort(scheme: String, port: Int): Int =
