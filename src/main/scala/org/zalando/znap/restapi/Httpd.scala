@@ -11,14 +11,14 @@ import akka.actor.{Actor, ActorLogging}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model.{HttpEntity, _}
-import akka.stream.ActorMaterializer
-
-import scala.concurrent.{ExecutionContext, Future}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.StandardRoute
+import akka.stream.ActorMaterializer
 import akka.util.{ByteString, Timeout}
 import org.zalando.znap.config.Config
 import org.zalando.znap.service.SnapshotService
+
+import scala.concurrent.Future
 
 /** REST API specification
   *
@@ -26,6 +26,7 @@ import org.zalando.znap.service.SnapshotService
 class Httpd(config: Config) extends Actor with ActorLogging {
 
   import akka.pattern.ask
+
   import scala.concurrent.duration._
 
   private implicit val system = context.system
@@ -117,15 +118,15 @@ class Httpd(config: Config) extends Actor with ActorLogging {
   var http: Future[Http.ServerBinding] = _
 
 
-  override def preStart() = {
+  override def preStart(): Unit = {
     http = Http().bindAndHandle(routes, "0.0.0.0", 8080)
   }
 
-  override def postStop() = {
-    http.map {_.unbind()}
+  override def postStop(): Unit = {
+    http.foreach(_.unbind())
   }
 
-  def receive = {
+  def receive: Receive = {
     case x: Any =>
       log.warning(s"unexpected message $x")
   }
