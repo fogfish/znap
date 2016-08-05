@@ -58,8 +58,16 @@ class Httpd(config: Config) extends Actor with ActorLogging {
         }
       }
 
+    val healthCheck =
+      path("healthcheck" / Segment) {
+        get {
+          complete("ok")
+        }
+      }
+
     apiSnapshotEntity ~
-      apiSnapshot
+      apiSnapshot ~
+      healthCheck
   }
 
   private def getSnapshotEntity(targetId: String, key: String): StandardRoute = {
