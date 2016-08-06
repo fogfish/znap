@@ -4,6 +4,7 @@ import akka.actor._
 import org.zalando.scarl.Supervisor.Specs
 import org.zalando.znap.config.{SnapshotTarget, NakadiSource, Config}
 import org.zalando.znap.nakadi.{NakadiQueueService, OAuth}
+import scala.concurrent.Future
 import scala.concurrent.duration._
 import org.zalando.scarl.Supervisor
 import java.net.URI
@@ -23,9 +24,8 @@ object QueueService {
 
   /** lookup queue i/o pool
     */
-  def pool(uri: URI)(implicit sys: ActorSystem): Option[ActorRef] = {
-    import org.zalando.scarl.ScarlSelection
-    sys.actorSelection(path + uri.getAuthority).lookup()
+  def pool(uri: URI)(implicit sys: ActorSystem): Future[ActorRef] = {
+    sys.actorSelection(path + uri.getAuthority).resolveOne(5.seconds)
   }
 }
 

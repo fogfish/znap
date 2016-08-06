@@ -29,18 +29,23 @@ class NakadiTargetSnapshotterRoot(snapshot: SnapshotTarget, tokens: NakadiTokens
   override
   val supervisorStrategy = strategyOneForOne(5, 30.seconds)
 
+  private val sink = actorOf( Props(classOf[DynamoPersistor], snapshot) )
+
+  private val reader = actorOf( Props(classOf[NakadiTargetSnapshotReader], snapshot), "reader" )
+
+  private val leader = actorOf( Props(classOf[NakadiTargetSnapshotter], snapshot, sink, tokens) )
+
   def specs = Seq(
-    Specs("sink", Props(classOf[DynamoPersistor], snapshot)),
-    Specs("reader", Props(classOf[NakadiTargetSnapshotReader], snapshot)),
-    SnapshotEntityService.spec(context.actorSelection("reader/dynamodb")),
-    Specs("coordinator", Props(classOf[NakadiTargetSnapshotter], snapshot, tokens))
+    SnapshotEntityService.spec(context.actorSelection("reader/dynamodb"))
   )
 }
 
 
-class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
-                              tokens: NakadiTokens) extends Actor
-    with NoUnexpectedMessages with ActorLogging {
+class NakadiTargetSnapshotter(
+  snapshotTarget: SnapshotTarget,
+  persistor: ActorRef,
+  tokens: NakadiTokens
+) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   override val supervisorStrategy = new EscalateEverythingSupervisorStrategy
 
@@ -48,10 +53,7 @@ class NakadiTargetSnapshotter(snapshotTarget: SnapshotTarget,
   import akka.pattern._
   import context.dispatcher
   import org.zalando.znap.utils._
-  import org.zalando.scarl.ScarlRef
 
-  // DI via supervisor
-  private val persistor = context.parent.lookup("sink")(context.system).get
 
   override def preStart(): Unit = {
     log.info(s"Starting snapshotter for target ${snapshotTarget.id}")

@@ -17,6 +17,7 @@ import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.utils.{ActorNames, ThrowableUtils, TimePeriodEventTracker, UnexpectedMessageException}
+import scala.concurrent.Future
 
 import scala.util.control.NonFatal
 
@@ -121,6 +122,7 @@ class NakadiReader(partition: String,
       stay()
 
     case Event(batch: EventBatch, _) =>
+      implicit val ec = context.dispatcher
       currentSentOffset = Some(batch.cursor.offset)
       persistor ! batch
 
