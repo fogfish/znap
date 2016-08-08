@@ -14,8 +14,7 @@ import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.utils.NoUnexpectedMessages
 
 class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
-                        dynamoDB: DynamoDB,
-                        config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
+                        dynamoDB: DynamoDB) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
 
@@ -30,8 +29,8 @@ class GetOffsetsChannel(snapshotTarget: SnapshotTarget,
       val items = offsetsTable.scan(new ScanSpec())
 
       val offsetMap = items.asScala.map { item =>
-        val partition = item.getString(config.DynamoDB.KVTables.Attributes.Key)
-        val offset = item.getString(config.DynamoDB.KVTables.Attributes.Value)
+        val partition = item.getString(Config.DynamoDB.KVTables.Attributes.Key)
+        val offset = item.getString(Config.DynamoDB.KVTables.Attributes.Value)
         partition -> offset
       }.toMap
 

@@ -17,6 +17,7 @@ import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.Messages.Ack
 import org.zalando.znap.nakadi.objects.EventBatch
 import org.zalando.znap.utils.{ActorNames, ThrowableUtils, TimePeriodEventTracker, UnexpectedMessageException}
+import scala.concurrent.Future
 
 import scala.util.control.NonFatal
 
@@ -28,12 +29,11 @@ import scala.util.control.NonFatal
 class NakadiReader(partition: String,
                    offsetOpt: Option[String],
                    nakadiSource: NakadiSource,
-                   config: Config,
                    tokens: NakadiTokens,
                    persistor: ActorRef) extends FSM[State, Unit] with ActorLogging {
   val errorTracker = new TimePeriodEventTracker(
-    config.Supervision.NakadiReader.MaxFailures,
-    config.Supervision.NakadiReader.Period
+    Config.Supervision.NakadiReader.MaxFailures,
+    Config.Supervision.NakadiReader.Period
   )
   override def supervisorStrategy: SupervisorStrategy = {
     OneForOneStrategy() {
@@ -106,7 +106,7 @@ class NakadiReader(partition: String,
 
   def startWorker(): Unit = {
     val workerRef = context.actorOf(
-      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, config, tokens),
+      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, tokens),
       s"NakadiReaderWorker-${nakadiSource.id}-$partition-${ActorNames.randomPart()}"
     )
     worker = Some(workerRef)
@@ -122,6 +122,7 @@ class NakadiReader(partition: String,
       stay()
 
     case Event(batch: EventBatch, _) =>
+      implicit val ec = context.dispatcher
       currentSentOffset = Some(batch.cursor.offset)
       persistor ! batch
 

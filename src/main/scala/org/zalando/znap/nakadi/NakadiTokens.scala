@@ -13,12 +13,16 @@ import org.zalando.stups.tokens.Tokens
 import org.zalando.znap.config.Config
 
 /**
-  * For accessing Nakadi tokens.
+  * OAuth token access
   */
-class NakadiTokens(config: Config) {
+trait OAuth {
+  def token(scope: String): String
+}
+
+class NakadiTokens() extends OAuth {
   private val tokens = {
-    Tokens.createAccessTokensWithUri(new URI(config.Tokens.AccessToken))
-      .tokenInfoUri(new URI(config.Tokens.TokenInfo))
+    Tokens.createAccessTokensWithUri(new URI(Config.Tokens.AccessToken))
+      .tokenInfoUri(new URI(Config.Tokens.TokenInfo))
       .manageToken("nakadi").addScope("uid").done()
 //      .manageToken("nakadi").addScope("nakadi.event_stream.read").done()
       .start()
@@ -31,4 +35,7 @@ class NakadiTokens(config: Config) {
   def stop(): Unit = {
     tokens.stop()
   }
+
+  def token(scope: String) =
+    tokens.get(scope)
 }

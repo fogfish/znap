@@ -21,10 +21,15 @@ import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration.FiniteDuration
 
-class Config {
+object Config {
   import scala.collection.JavaConversions._
 
-  private val logger = LoggerFactory.getLogger(classOf[Config])
+  /** root application config */
+  private val appConfig = TypesafeConfigFactory
+    .systemProperties()
+    .withFallback(readInstanceConfig())
+    .withFallback(TypesafeConfigFactory.defaultApplication().resolve())
+
 
   val ApplicationInstanceId = {
     val now = LocalDateTime.now(ZoneId.of("UTC"))
@@ -39,10 +44,6 @@ class Config {
     val DynamoDBDispatcher = "dynamodb-dispatcher"
   }
 
-  private val appConfig = TypesafeConfigFactory
-    .systemProperties()
-    .withFallback(readInstanceConfig())
-    .withFallback(TypesafeConfigFactory.defaultApplication().resolve())
 
   object Tokens {
     val AccessToken = appConfig.getString("tokens.accessToken")
@@ -168,7 +169,7 @@ class Config {
     } else {
       val parts = configFile.split("://", 2)
       if (parts.length < 2) {
-        logger.info(s"No scheme is set for config file URL, considered as file path.")
+//        logger.info(s"No scheme is set for config file URL, considered as file path.")
         readInstanceConfigFromFile(configFile)
       } else {
         parts(0).toLowerCase() match {

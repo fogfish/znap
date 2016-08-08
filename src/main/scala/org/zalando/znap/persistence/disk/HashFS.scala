@@ -91,8 +91,6 @@ private class HashFSTx(val root: File) extends Actor with NoUnexpectedMessages w
   }
 
   private def put(id: String, blob: String): Unit = {
-//      log.debug(s"Put command for id = $id")
-
     try
     {
       val f = file(id)
@@ -110,8 +108,6 @@ private class HashFSTx(val root: File) extends Actor with NoUnexpectedMessages w
   }
 
   private def remove(id: String): Unit = {
-//      log.debug(s"Remove command for id = $id")
-
     try
     {
       val f = file(id)

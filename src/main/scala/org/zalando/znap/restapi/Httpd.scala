@@ -23,7 +23,7 @@ import scala.concurrent.Future
 /** REST API specification
   *
   */
-class Httpd(config: Config) extends Actor with ActorLogging {
+class Httpd extends Actor with ActorLogging {
 
   import akka.pattern.ask
 
@@ -33,7 +33,7 @@ class Httpd(config: Config) extends Actor with ActorLogging {
   private implicit val materializer = ActorMaterializer()
   private implicit val ec = context.dispatcher
 
-  private val targets = config.Targets.map(t => t.id -> t).toMap
+  private val targets = Config.Targets.map(t => t.id -> t).toMap
 
   /** set of active routes */
   val routes = {
@@ -98,7 +98,7 @@ class Httpd(config: Config) extends Actor with ActorLogging {
     targets.get(targetId) match {
       case Some(target) =>
         val keySource = SnapshotService
-          .getSnapshotKeys(target, config)
+          .getSnapshotKeys(target)
           .map(serializeKey)
 
         val contentType = MediaTypes.`text/plain`.withCharset(HttpCharsets.`UTF-8`)

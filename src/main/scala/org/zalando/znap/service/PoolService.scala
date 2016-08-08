@@ -23,5 +23,5 @@ trait PoolService extends Actor {
       context.actorOf(props) forward request
   }
 
-  def props: Props
+  def props(): Props
 }

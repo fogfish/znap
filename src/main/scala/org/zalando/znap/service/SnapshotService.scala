@@ -20,7 +20,7 @@ object SnapshotService {
   private val totalSegments = 4
   private val scanItemLimit = 10
 
-  def getSnapshotKeys(target: SnapshotTarget, config: Config): Source[String, Any] = {
+  def getSnapshotKeys(target: SnapshotTarget): Source[String, Any] = {
     assert(totalSegments > 0)
 
     val client = {
@@ -33,11 +33,11 @@ object SnapshotService {
       target.destination match {
         case d: DynamoDBDestination =>
           val iterator = new ScannerIterator(
-            client, d.tableName, config.DynamoDB.KVTables.Attributes.Key,
+            client, d.tableName, Config.DynamoDB.KVTables.Attributes.Key,
             scanItemLimit, totalSegments, segment)
 
           Source.fromIterator(() => iterator)
-            .addAttributes(ActorAttributes.dispatcher(config.Akka.DynamoDBDispatcher))
+            .addAttributes(ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher))
       }
     }
 
@@ -49,7 +49,7 @@ object SnapshotService {
       }
 
     resultStream
-      .addAttributes(ActorAttributes.dispatcher(config.Akka.DynamoDBDispatcher))
+      .addAttributes(ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher))
       .withAttributes(Attributes.inputBuffer(initial = 8, max = 64))
       .async
   }

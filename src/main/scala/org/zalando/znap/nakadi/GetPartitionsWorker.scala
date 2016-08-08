@@ -7,14 +7,16 @@
   */
 package org.zalando.znap.nakadi
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable}
+import akka.actor._
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.headers.{Authorization, OAuth2BearerToken}
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings}
+import org.zalando.scarl.Supervisor
 import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.nakadi.objects.NakadiPartition
 import org.zalando.znap.objects.Partition
+import org.zalando.znap.service.PoolService
 import org.zalando.znap.utils.{NoUnexpectedMessages, TimeoutException}
 
 import scala.concurrent.duration.FiniteDuration
@@ -22,9 +24,14 @@ import scala.concurrent.duration.FiniteDuration
 /**
   * Actor that gets partitions information from Nakadi.
   */
+class NakadiQueueService(source: NakadiSource, oauth: OAuth) extends PoolService {
+
+  override def props: Props =
+    Props(classOf[GetPartitionsWorker], source, oauth)
+}
+
 class GetPartitionsWorker(nakadiSource: NakadiSource,
-                          config: Config,
-                          tokens: NakadiTokens) extends Actor
+                          oauth: OAuth) extends Actor
     with NoUnexpectedMessages with ActorLogging {
 
   // TODO robust retries
@@ -34,6 +41,7 @@ class GetPartitionsWorker(nakadiSource: NakadiSource,
   import context.dispatcher
   import org.zalando.znap.utils.RichStream._
 
+  val oauthScope = "nakadi"
   var timer: Option[Cancellable] = None
 
   def waitingForCommand: Receive = {
@@ -45,7 +53,7 @@ class GetPartitionsWorker(nakadiSource: NakadiSource,
       val scheme = nakadiSource.uri.getScheme
       val hostAndPort = s"${nakadiSource.uri.getHost}:${nakadiSource.uri.getPort}"
       val uri = s"$scheme://$hostAndPort/event-types/${nakadiSource.eventType}/partitions"
-      val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
+      val authorizationHeader = new Authorization(OAuth2BearerToken(oauth.token(oauthScope)))
       val request = HttpRequest(
         uri = uri,
         headers = List(authorizationHeader))
@@ -66,7 +74,7 @@ class GetPartitionsWorker(nakadiSource: NakadiSource,
       } pipeTo self
 
       timer = Some(context.system.scheduler.scheduleOnce(
-        config.Nakadi.PartitionsReadTimeout, self, Timeout(config.Nakadi.PartitionsReadTimeout)))
+        Config.Nakadi.PartitionsReadTimeout, self, Timeout(Config.Nakadi.PartitionsReadTimeout)))
 
       context.become(waitingForResponse(sender()))
   }

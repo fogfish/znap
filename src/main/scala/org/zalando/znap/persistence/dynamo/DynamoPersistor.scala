@@ -18,8 +18,7 @@ import org.zalando.znap.persistence.PersistorCommands
 import org.zalando.znap.persistence.dynamo.DynamoPersistor._
 import org.zalando.znap.utils.{EscalateEverythingSupervisorStrategy, UnexpectedMessageException}
 
-class DynamoPersistor(snapshotTarget: SnapshotTarget,
-                      config: Config) extends FSM[State, Data] with Stash with ActorLogging {
+class DynamoPersistor(snapshotTarget: SnapshotTarget) extends FSM[State, Data] with Stash with ActorLogging {
 
   override val supervisorStrategy = new EscalateEverythingSupervisorStrategy
 
@@ -31,13 +30,13 @@ class DynamoPersistor(snapshotTarget: SnapshotTarget,
   private val dynamoDB = new DynamoDB(client)
 
   private val getOffsetsChannel = context.actorOf(Props(
-    classOf[GetOffsetsChannel], snapshotTarget, dynamoDB, config)
-      .withDispatcher(config.Akka.DynamoDBDispatcher)
+    classOf[GetOffsetsChannel], snapshotTarget, dynamoDB)
+      .withDispatcher(Config.Akka.DynamoDBDispatcher)
   )
 
   private val writeEventBatchChannel = context.actorOf(Props(
-    classOf[WriteEventBatchChannel], snapshotTarget, dynamoDB, config)
-     .withDispatcher(config.Akka.DynamoDBDispatcher)
+    classOf[WriteEventBatchChannel], snapshotTarget, dynamoDB)
+     .withDispatcher(Config.Akka.DynamoDBDispatcher)
   )
 
   startWith(Initialization, NoData)

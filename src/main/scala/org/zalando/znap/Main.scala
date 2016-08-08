@@ -9,35 +9,47 @@ package org.zalando.znap
 
 import akka.actor.{ActorSystem, Props}
 import org.slf4j.LoggerFactory
+import org.zalando.scarl.RootSupervisor
+import org.zalando.scarl.ScarlSupervisor
+import org.zalando.scarl.Supervisor.Specs
 import org.zalando.znap.config.{Config, NakadiSource, SnapshotTarget}
-import org.zalando.znap.nakadi.{NakadiTargetSnapshotter, NakadiTokens}
+import org.zalando.znap.nakadi.{OAuth, NakadiTargetSnapshotter, NakadiTokens}
 import org.zalando.znap.restapi.Httpd
 import org.zalando.znap.service.SnapshotService
+import org.zalando.znap.service.queue.QueueService
+import org.zalando.znap.service.stream.StreamService
+import scala.concurrent.duration._
+
 
 object Main extends App {
-  val config = new Config()
+  private val uid = "znap"
+
+  Config
 
   implicit val logger = LoggerFactory.getLogger(Main.getClass)
-  logger.info(s"Application instance started with ID ${config.ApplicationInstanceId}")
+  logger.info(s"Application instance started with ID ${Config.ApplicationInstanceId}")
 
-//  new Bootstrapper(config).bootstrap()
+  val tokens = new NakadiTokens()
 
-  val tokens = new NakadiTokens(config)
-
-  implicit val actorSystem = ActorSystem("znap")
+  implicit val actorSystem = ActorSystem(uid)
 
   actorSystem.registerOnTermination {
     LoggerFactory.getLogger(Main.getClass).info("Stopping token refreshing")
     tokens.stop()
   }
 
-  config.Targets.foreach {
-    case target @ SnapshotTarget(id, source: NakadiSource, _, _, _) =>
-      actorSystem.actorOf(
-        Props(classOf[NakadiTargetSnapshotter], target, config, tokens),
-        id
-      )
-  }
+  actorSystem.rootSupervisor(
+    Specs(uid, Props(classOf[SubSystemsSupervisor], tokens))
+  )
+}
 
-  actorSystem.actorOf(Props(classOf[Httpd], config))
+class SubSystemsSupervisor(oauth: OAuth) extends RootSupervisor {
+  override
+  def supervisorStrategy = strategyOneForOne(3, 2.hours)
+
+  def specs = Seq(
+      QueueService.spec(oauth),
+      StreamService.spec(oauth),
+      Specs("httpd", Props[Httpd])
+  )
 }

@@ -15,8 +15,7 @@ import org.zalando.znap.persistence.dynamo.WriteEventBatchChannel.{BatchWritten,
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
-                             dynamoDB: DynamoDB,
-                             config: Config) extends Actor with NoUnexpectedMessages with ActorLogging {
+                             dynamoDB: DynamoDB) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
 
@@ -32,7 +31,7 @@ class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
   }
 
   private def writeEvents(events: List[NakadiEvent]): Unit = {
-    events.grouped(config.DynamoDB.Batches.WriteBatchSize)
+    events.grouped(Config.DynamoDB.Batches.WriteBatchSize)
       .foreach(writeEventGroup)
   }
 
@@ -45,12 +44,12 @@ class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
       }.asText()
 
       val item = new Item()
-        .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, key)
+        .withPrimaryKey(Config.DynamoDB.KVTables.Attributes.Key, key)
 
       if (snapshotTarget.compress) {
-        item.withBinary(config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.toString))
+        item.withBinary(Config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(e.toString))
       } else {
-        item.withString(config.DynamoDB.KVTables.Attributes.Value, e.toString)
+        item.withString(Config.DynamoDB.KVTables.Attributes.Value, e.toString)
       }
 
       updateItems.addItemToPut(item)
@@ -65,8 +64,8 @@ class WriteEventBatchChannel(snapshotTarget: SnapshotTarget,
     val offsetUpdateItems = new TableWriteItems(dynamoDBDestination.offsetsTableName)
 
     offsetUpdateItems.addItemToPut(new Item()
-        .withPrimaryKey(config.DynamoDB.KVTables.Attributes.Key, cursor.partition)
-        .withString(config.DynamoDB.KVTables.Attributes.Value, cursor.offset)
+        .withPrimaryKey(Config.DynamoDB.KVTables.Attributes.Key, cursor.partition)
+        .withString(Config.DynamoDB.KVTables.Attributes.Value, cursor.offset)
     )
     writeWithRetries(offsetUpdateItems)
   }

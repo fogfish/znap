@@ -18,10 +18,6 @@ SenzaInfo:
       - EC2:
          Description: "aws Instance type"
          Default: "t2.small"
-      - ENV:
-         Description: "environment name"
-         Default: dev
-         AllowedValues: ["dev", "ci", "stg", "live"]
       - AppId:
          Description: "Yourturn application id (see stups.io)"
          Default: znap

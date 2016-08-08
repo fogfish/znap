@@ -7,28 +7,33 @@
   */
 package org.zalando.znap.service
 
-import akka.actor.{ActorRef, Actor, Props}
+import akka.actor._
+import org.zalando.scarl.Supervisor.Specs
+
+import scala.concurrent.Future
 
 
 object SnapshotEntityService {
-  type Commit = (String) => Unit
+  def spec(pid: ActorSelection) =
+    Specs(classOf[SnapshotEntityService].getSimpleName, Props(classOf[SnapshotEntityService], pid))
+}
 
-  def spec(reader: ActorRef) =
-    Props(classOf[SnapshotEntityService], reader)
+class SnapshotEntityService(pid: ActorSelection) extends PoolService {
+  import org.zalando.scarl.ScarlSelection
+  implicit val ec = context.system.dispatcher
+
+  override def props: Props =
+    Props(classOf[SnapshotEntityRequest], pid.resolve())
 }
 
 
-class SnapshotEntityService(reader: ActorRef) extends PoolService {
-  override def props: Props = Props(classOf[SnapshotEntityRequest], reader)
-}
-
-
-class SnapshotEntityRequest(reader: ActorRef) extends Actor {
+class SnapshotEntityRequest(reader: Future[ActorRef]) extends Actor {
+  implicit val ec = context.system.dispatcher
   var caller: ActorRef = _
 
   def receive = {
     case key: String =>
-      reader ! DynamoDBEntityReader.GetEntityCommand(key)
+      reader map {_ ! DynamoDBEntityReader.GetEntityCommand(key)}
       caller = sender()
 
     case DynamoDBEntityReader.Entity(_, entity) =>
