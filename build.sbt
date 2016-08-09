@@ -24,19 +24,19 @@ libraryDependencies ++= {
     "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.7.4",
 //    "com.typesafe.scala-logging" %% "scala-logging" % "3.1.0",
 
-//    "org.slf4j" % "jcl-over-slf4j" % "1.7.18",
+    "org.zalando" % "scarl_2.11" % "0.1.4",
 
     // Typesafe Config is included in Akka, but not necessarily the latest version.
     "com.typesafe" % "config" % "1.3.0",
 
     "org.zalando.stups" % "tokens" % "0.9.9",
-    "org.zalando" % "scarl_2.11" % "0.1.4",
     // Required for stups tokens
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
-    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.21",
-    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.22",
+    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.24",
+    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.24",
+    "com.amazonaws" % "aws-java-sdk-sqs" % "1.11.24",
 
     "org.apache.commons" % "commons-compress" % "1.12",
 

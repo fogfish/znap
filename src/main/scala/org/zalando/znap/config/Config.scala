@@ -8,6 +8,7 @@
 package org.zalando.znap.config
 
 import java.io.File
+import java.net.URI
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneId}
 import java.util.UUID
@@ -15,11 +16,12 @@ import java.util.concurrent.TimeUnit
 
 import akka.util.Timeout
 import com.amazonaws.services.s3.AmazonS3Client
-import com.typesafe.config.{ConfigParseOptions, Config => TypesafeConfig, ConfigFactory => TypesafeConfigFactory}
+import com.typesafe.config.{ConfigException, ConfigParseOptions, Config => TypesafeConfig, ConfigFactory => TypesafeConfigFactory}
 import org.apache.http.client.utils.URIBuilder
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration.FiniteDuration
+import scala.util.{Failure, Success, Try}
 
 object Config {
   import scala.collection.JavaConversions._
@@ -42,6 +44,7 @@ object Config {
 
   object Akka {
     val DynamoDBDispatcher = "dynamodb-dispatcher"
+    val SqsDispatcher = "sqs-dispatcher"
   }
 
 
@@ -100,7 +103,17 @@ object Config {
 
 
   val Targets: List[SnapshotTarget] = {
-    appConfig.getObjectList("snapshotting.targets").toList.map(co => readSnapshotTarget(co.toConfig))
+    val targets = appConfig.getObjectList("snapshotting.targets").toList.map(co => readSnapshotTarget(co.toConfig))
+
+    // Check ids uniqueness.
+    val allIds = targets.map(_.id)
+    allIds.groupBy(x => x).foreach { case (id, lst) =>
+      if (lst.size > 1) {
+        throw new Exception(s"Target id $id is not unique")
+      }
+    }
+
+    targets
   }
 
   private def readSnapshotTarget(configObject: TypesafeConfig): SnapshotTarget = {
@@ -135,10 +148,25 @@ object Config {
       }
     }
 
+    val signalling = {
+      val signallingConfig = configObject.getObject("signalling").toConfig
+      Try(signallingConfig.getString("type")) match {
+        case Success("sqs") =>
+          val uri = new URI(signallingConfig.getString("url"))
+          Some(SqsSignalling(uri))
+
+        case Failure(_: ConfigException.Missing) =>
+          None
+
+        case Failure(ex) =>
+          throw ex
+      }
+    }
+
     val key = configObject.getString("key").split('.').toList
     val compress = configObject.getBoolean("compress")
 
-    SnapshotTarget(id, source, destination, key, compress)
+    SnapshotTarget(id, source, destination, signalling, key, compress)
   }
 
   private def resolvePort(scheme: String, port: Int): Int =
@@ -159,6 +187,11 @@ object Config {
     object Batches {
       val WriteBatchSize = 25
     }
+  }
+
+  object SQS {
+    val MaxMessageBodySize = 256 * 1024
+    val MaxEntriesInWriteBatch = 10
   }
 
 

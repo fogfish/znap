@@ -99,22 +99,20 @@ class NakadiReader(partition: String,
     */
   var lastAckedOffset: Option[String] = offsetOpt
 
-  override def preStart(): Unit = {
-    log.info(s"Nakadi reader for source ${nakadiSource.id} and partition $partition started")
-    startWorker()
-  }
+    override def preStart(): Unit = {
+      log.info(s"Nakadi reader for source ${nakadiSource.id} and partition $partition started")
+      startWorker()
+    }
 
-  def startWorker(): Unit = {
-    val workerRef = context.actorOf(
-      Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, tokens),
-      s"NakadiReaderWorker-${nakadiSource.id}-$partition-${ActorNames.randomPart()}"
-    )
-    worker = Some(workerRef)
-  }
+    def startWorker(): Unit = {
+      val workerRef = context.actorOf(
+        Props(classOf[NakadiReaderWorker], partition, lastAckedOffset, nakadiSource, tokens),
+        s"NakadiReaderWorker-${nakadiSource.id}-$partition-${ActorNames.randomPart()}"
+      )
+      worker = Some(workerRef)
+    }
 
   startWith(WaitingForSeq, ())
-
-  var set = Set.empty[String]
 
   when(WaitingForSeq) {
     // An echo from a previous worker.

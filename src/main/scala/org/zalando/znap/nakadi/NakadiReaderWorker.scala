@@ -75,7 +75,7 @@ class NakadiReaderWorker(partition: String,
             assert(preconditionFailedContent.status == StatusCodes.PreconditionFailed.intValue)
 
             if (offsetUnavailableRegex.findFirstMatchIn(preconditionFailedContent.detail).isDefined) {
-              throw new InvalidOffsetException(partition, offset)
+              throw new InvalidOffsetException(partition, offset, content)
             } else {
               val msg = s"Unknown response on getting events from partition $partition: $response $content"
               throw new Exception(msg)
