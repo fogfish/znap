@@ -9,7 +9,7 @@ package org.zalando.znap.config
 
 import java.net.URI
 
-import org.zalando.znap.nakadi.OAuth
+import org.zalando.znap.source.nakadi.OAuth
 
 sealed trait SnapshotSource {
 
@@ -28,6 +28,7 @@ sealed trait SnapshotDestination {
 final case class DynamoDBDestination(uri: URI,
                                      tableName: String,
                                      offsetsTableName: String) extends SnapshotDestination
+final case class DiskDestination() extends SnapshotDestination
 
 sealed trait Signalling
 

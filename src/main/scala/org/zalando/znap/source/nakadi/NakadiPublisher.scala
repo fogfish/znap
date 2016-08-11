@@ -1,4 +1,4 @@
-package org.zalando.znap.nakadi
+package org.zalando.znap.source.nakadi
 
 import java.time.ZonedDateTime
 
@@ -12,9 +12,9 @@ import akka.stream.{ActorMaterializerSettings, _}
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, NakadiSource}
-import org.zalando.znap.nakadi.objects.{EventBatch, NakadiPartition}
+import org.zalando.znap.source.nakadi.objects.{EventBatch, NakadiPartition}
 import org.zalando.znap.objects.Partition
-import org.zalando.znap.persistence.OffsetReader
+import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.utils._
 
 import scala.concurrent.Future
@@ -22,7 +22,7 @@ import scala.util.control.NonFatal
 
 class NakadiPublisher(nakadiSource: NakadiSource,
                       tokens: NakadiTokens,
-                      offsetReader: OffsetReader)
+                      offsetReader: OffsetReaderSync)
                      (implicit actorSystem: ActorSystem) {
   import NakadiPublisher._
   import org.zalando.znap.utils.RichStream._
@@ -33,6 +33,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   private implicit val executionContext = actorSystem.dispatcher
 
   def getSource(): Source[EventBatch, NotUsed] = {
+    // Get existing partitions from Nakadi.
     val partitionsF = getPartitions.flatMap {
       case HttpResponse(StatusCodes.OK, _, entity, _) =>
         entity.dataBytes.collectAsObject[List[NakadiPartition]]().map { nakadiPartitions =>
@@ -48,15 +49,16 @@ class NakadiPublisher(nakadiSource: NakadiSource,
         }
     }
 
+    // Get saved offsets.
     val offsetsF = offsetReader.getLastOffsets
 
     val offsetsToStartF = (partitionsF zip offsetsF).map {
       case (partitionsList, offsetsMap) =>
-        // TODO check offsets
         partitionsList.map {
           case Partition(partition, oldestAvailableOffset, newestAvailableOffset) =>
             val offset = offsetsMap.get(partition) match {
               case Some(storedOffset) =>
+                // Check offset availability considering the stored offset.
                 val storedOffsetL = storedOffset.toLong
                 val oldestAvailableOffsetL = oldestAvailableOffset.toLong
                 val newestAvailableOffsetL = newestAvailableOffset.toLong

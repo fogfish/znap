@@ -7,10 +7,9 @@
   */
 package org.zalando.znap.persistence
 
-import org.zalando.znap.nakadi.objects.Cursor
+import org.zalando.znap.source.nakadi.objects.Cursor
 
-import scala.concurrent.Future
-
-trait OffsetPersistor {
-  def persist(cursor: Cursor): Future[Unit]
+trait OffsetWriterSync {
+  def init(): Unit
+  def write(cursor: Cursor): Unit
 }

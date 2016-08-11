@@ -43,6 +43,7 @@ object Config {
   // Application config.
 
   object Akka {
+    val DiskDBDispatcher = "disk-dispatcher"
     val DynamoDBDispatcher = "dynamodb-dispatcher"
     val SqsDispatcher = "sqs-dispatcher"
   }
@@ -145,6 +146,9 @@ object Config {
           val tableName = destConfig.getString("table-name")
           val offsetsTableName = destConfig.getString("offsets-table-name")
           DynamoDBDestination(restURIBuilder.build(), tableName, offsetsTableName)
+
+        case "disk" =>
+          DiskDestination()
       }
     }
 
