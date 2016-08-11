@@ -29,9 +29,14 @@ final case class DynamoDBDestination(uri: URI,
                                      tableName: String,
                                      offsetsTableName: String) extends SnapshotDestination
 
+sealed trait Signalling
+
+final case class SqsSignalling(uri: URI) extends Signalling
+
 final case class SnapshotTarget(id: String,
                                 source: SnapshotSource,
                                 destination: SnapshotDestination,
+                                signalling: Option[Signalling],
                                 key: List[String],
                                 compress: Boolean) {
 }
