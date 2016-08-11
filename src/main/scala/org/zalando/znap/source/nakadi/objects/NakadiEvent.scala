@@ -5,7 +5,7 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.nakadi.objects
+package org.zalando.znap.source.nakadi.objects
 
 import com.fasterxml.jackson.annotation.{JsonIgnoreProperties, JsonProperty}
 import com.fasterxml.jackson.databind.JsonNode

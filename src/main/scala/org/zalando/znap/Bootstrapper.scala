@@ -15,8 +15,8 @@ import org.zalando.znap.config.Config
 /**
   * For initial directory bootstrapping.
   */
-class Bootstrapper {
-  private val logger = LoggerFactory.getLogger(classOf[Bootstrapper])
+object Bootstrapper {
+  private val logger = LoggerFactory.getLogger(Bootstrapper.getClass)
 
   private class SnapshotFileFilter(eventType: String) extends FileFilter {
     override def accept(pathname: File): Boolean = {

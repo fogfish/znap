@@ -12,9 +12,12 @@ import java.util.UUID
 import akka.actor.{Actor, ActorLogging}
 import akka.stream.{ActorMaterializer, KillSwitch}
 import org.zalando.znap.config.{Config, SnapshotTarget}
-import org.zalando.znap.nakadi.NakadiTokens
+import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 
+/**
+  * Actor that supervises pipelines.
+  */
 class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages with ActorLogging {
   import akka.pattern.pipe
   import context.dispatcher

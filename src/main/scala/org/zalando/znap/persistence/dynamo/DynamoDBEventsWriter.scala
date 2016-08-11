@@ -10,22 +10,21 @@ package org.zalando.znap.persistence.dynamo
 import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteItems}
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
-import org.zalando.znap.nakadi.objects.NakadiEvent
-import org.zalando.znap.persistence.EventsPersistor
+import org.zalando.znap.source.nakadi.objects.NakadiEvent
+import org.zalando.znap.persistence.EventsWriterSync
 import org.zalando.znap.utils.{Compressor, Json}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class DynamoDBEventsPersistor(snapshotTarget: SnapshotTarget,
-                              override protected val dynamoDB: DynamoDB)
-                             (executionContext: ExecutionContext) extends EventsPersistor with DynamoDBWriter {
-  private val logger = LoggerFactory.getLogger(classOf[DynamoDBEventsPersistor])
+class DynamoDBEventsWriter(snapshotTarget: SnapshotTarget,
+                           override protected val dynamoDB: DynamoDB) extends EventsWriterSync with DynamoDBWriter {
+  private val logger = LoggerFactory.getLogger(classOf[DynamoDBEventsWriter])
 
   private val dynamoDBDestination: DynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
 
-  private implicit val ec = executionContext
+  override def init(): Unit = {}
 
-  override def persist(events: List[NakadiEvent]): Future[Unit] = Future {
+  override def write(events: List[NakadiEvent]): Unit = {
     if (events.nonEmpty) {
       events.grouped(Config.DynamoDB.Batches.WriteBatchSize)
         .foreach(writeEventGroup)

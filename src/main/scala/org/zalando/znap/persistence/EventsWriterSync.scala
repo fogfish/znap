@@ -7,10 +7,9 @@
   */
 package org.zalando.znap.persistence
 
-import org.zalando.znap.nakadi.objects.NakadiEvent
+import org.zalando.znap.source.nakadi.objects.NakadiEvent
 
-import scala.concurrent.Future
-
-trait EventsPersistor {
-  def persist(events: List[NakadiEvent]): Future[Unit]
+trait EventsWriterSync {
+  def init(): Unit
+  def write(events: List[NakadiEvent]): Unit
 }

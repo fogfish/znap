@@ -13,30 +13,23 @@ import com.amazonaws.services.sqs.AmazonSQSClient
 import com.amazonaws.services.sqs.model.{SendMessageBatchRequest, SendMessageBatchRequestEntry}
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, SnapshotTarget, SqsSignalling}
-import org.zalando.znap.signalling.Signaller
+import org.zalando.znap.signalling.SignallerSync
 
 import scala.annotation.tailrec
 import scala.concurrent.{ExecutionContext, Future}
 
 class SqsSignaller(signalling: SqsSignalling,
-                   sqsClient: AmazonSQSClient)
-                  (executionContext: ExecutionContext) extends Signaller {
+                   sqsClient: AmazonSQSClient) extends SignallerSync {
   import collection.JavaConverters._
   import SqsSignaller._
 
   private val logger = LoggerFactory.getLogger(classOf[SqsSignaller])
 
-  private implicit val ec = executionContext
-
-  override def signal(values: List[String]): Future[Unit] = {
+  override def signal(values: List[String]): Unit = {
     if (values.nonEmpty) {
-      Future {
-        values.foreach(v => assert(v.length <= Config.SQS.MaxMessageBodySize))
+      values.foreach(v => assert(v.length <= Config.SQS.MaxMessageBodySize))
 
-        signal0(values)(MaxRetries)
-      }
-    } else {
-      Future.successful(())
+      signal0(values)(MaxRetries)
     }
   }
 
