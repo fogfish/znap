@@ -25,6 +25,10 @@ class SqsSignaller(signalling: SqsSignalling,
 
   private val logger = LoggerFactory.getLogger(classOf[SqsSignaller])
 
+  override def signal(value: String): Unit = {
+    signal0(List(value))(MaxRetries)
+  }
+
   override def signal(values: List[String]): Unit = {
     if (values.nonEmpty) {
       values.foreach(v => assert(v.length <= Config.SQS.MaxMessageBodySize))

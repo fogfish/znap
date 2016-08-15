@@ -7,6 +7,7 @@
   */
 package org.zalando.znap.utils
 
+import com.fasterxml.jackson.databind.node.{JsonNodeFactory, ObjectNode}
 import com.fasterxml.jackson.databind.{ObjectMapper, SerializationFeature}
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
@@ -33,7 +34,15 @@ object Json {
     final class Jsonifiable[T] private[Implicit](ob: T) {
       def toJson: String = Json.write(ob)
     }
-
   }
 
+  def createObject(fields: (String, String)*): ObjectNode = {
+    val obj = new ObjectNode(JsonNodeFactory.instance)
+
+    fields.foreach {
+      case (fieldName, value) => obj.put(fieldName, value)
+    }
+
+    obj
+  }
 }
