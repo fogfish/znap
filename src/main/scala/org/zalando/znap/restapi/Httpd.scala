@@ -16,8 +16,8 @@ import akka.http.scaladsl.server.StandardRoute
 import akka.stream.ActorMaterializer
 import akka.util.{ByteString, Timeout}
 import org.zalando.znap.config.Config
-import org.zalando.znap.dump
-import org.zalando.znap.dump.DumpManager
+import org.zalando.znap.dumps
+import org.zalando.znap.dumps.DumpManager
 import org.zalando.znap.service.{DumpKeysService, SnapshotService}
 import org.zalando.znap.utils.Json
 
@@ -136,9 +136,9 @@ class Httpd extends Actor with ActorLogging {
               entity = HttpEntity(contentType, responseString)
             )
 
-          case DumpManager.SignallingNotConfigured =>
+          case DumpManager.DumpingNotConfigured =>
             val responseString = Json.createObject(
-              "message" -> s"Signalling for target $targetId is not configured"
+              "message" -> s"Dumping for target $targetId is not configured"
             ).toString
             val contentType = MediaTypes.`application/json`
             HttpResponse(
@@ -155,7 +155,7 @@ class Httpd extends Actor with ActorLogging {
 
   private def getDumpStatus(dumpUid: String): StandardRoute = {
     val result = DumpKeysService.getDumpStatus(dumpUid)(context.system).map {
-      case dump.DumpRunning =>
+      case dumps.DumpRunning =>
         val contentType = MediaTypes.`application/json`
         val responseString = Json.createObject(
           "status" -> "RUNNING",
@@ -166,7 +166,7 @@ class Httpd extends Actor with ActorLogging {
           entity = HttpEntity(contentType, responseString)
         )
 
-      case dump.DumpFinishedSuccefully =>
+      case dumps.DumpFinishedSuccefully =>
         val contentType = MediaTypes.`application/json`
         val responseString = Json.createObject(
           "status" -> "FINISHED_SUCCESSFULLY",
@@ -177,7 +177,7 @@ class Httpd extends Actor with ActorLogging {
           entity = HttpEntity(contentType, responseString)
         )
 
-      case dump.DumpFailed(errorMessage) =>
+      case dumps.DumpFailed(errorMessage) =>
         val contentType = MediaTypes.`application/json`
         val responseString = Json.createObject(
           "status" -> "FAILED",
@@ -188,7 +188,7 @@ class Httpd extends Actor with ActorLogging {
           entity = HttpEntity(contentType, responseString)
         )
 
-      case dump.UnknownDump =>
+      case dumps.UnknownDump =>
         val contentType = MediaTypes.`application/json`
         val responseString = Json.createObject(
           "message" -> s"Unknown dump $dumpUid"

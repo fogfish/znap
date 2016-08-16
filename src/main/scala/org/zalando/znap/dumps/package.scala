@@ -7,7 +7,7 @@
   */
 package org.zalando.znap
 
-package object dump {
+package object dumps {
   type DumpUID = String
 
   sealed trait DumpStatus

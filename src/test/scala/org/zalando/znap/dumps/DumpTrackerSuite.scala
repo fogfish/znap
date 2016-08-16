@@ -5,12 +5,12 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.dump
+package org.zalando.znap.dumps
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.scalatest.{FunSpec, Matchers}
 import org.zalando.znap.config.{EmptyDestination, EmptySource, SnapshotTarget}
-import org.zalando.znap.dump
+import org.zalando.znap.dumps
 
 class DumpTrackerSuite extends FunSpec with Matchers {
 
@@ -21,20 +21,20 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   private val dumpUid2 = "x2"
 
   private val target1 = SnapshotTarget(
-    "id1", EmptySource, EmptyDestination, None, Nil, compress = false)
+    "id1", EmptySource, EmptyDestination, None, None, Nil, compress = false)
   private val target2 = SnapshotTarget(
-    "id2", EmptySource, EmptyDestination, None, Nil, compress = false)
+    "id2", EmptySource, EmptyDestination, None, None, Nil, compress = false)
 
   it("should not return status for an unknown dump") {
     val dt = new DumpTracker
-    dt.getStatus("unknown") shouldBe dump.UnknownDump
+    dt.getStatus("unknown") shouldBe dumps.UnknownDump
   }
 
   it("should return status for a started dump") {
     val dt = new DumpTracker
     val dumpUid = "x"
     dt.dumpStarted(target1, dumpUid, ActorRef.noSender)
-    dt.getStatus(dumpUid) should not be dump.UnknownDump
+    dt.getStatus(dumpUid) should not be dumps.UnknownDump
   }
 
   it("should finish a dump with a legal runner") {
@@ -61,7 +61,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
     val dt = new DumpTracker
     dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
-    dt.getStatus(dumpUid1) shouldBe dump.DumpFinishedSuccefully
+    dt.getStatus(dumpUid1) shouldBe dumps.DumpFinishedSuccefully
   }
 
   it("should return status for a failed dump") {
@@ -69,7 +69,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
     val message = "message"
     dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, message) shouldBe dumpUid1
-    dt.getStatus(dumpUid1) shouldBe dump.DumpFailed(message)
+    dt.getStatus(dumpUid1) shouldBe dumps.DumpFailed(message)
   }
 
   it("should not allow to finish a not started dump") {

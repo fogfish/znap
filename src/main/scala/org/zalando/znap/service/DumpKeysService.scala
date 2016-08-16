@@ -3,8 +3,8 @@ package org.zalando.znap.service
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
 import org.zalando.znap.config.SnapshotTarget
-import org.zalando.znap.dump._
-import org.zalando.znap.dump.DumpManager
+import org.zalando.znap.dumps._
+import org.zalando.znap.dumps.DumpManager
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
