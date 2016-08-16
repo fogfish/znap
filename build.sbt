@@ -34,9 +34,11 @@ libraryDependencies ++= {
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
-    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.24",
-    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.24",
-    "com.amazonaws" % "aws-java-sdk-sqs" % "1.11.24",
+    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.26",
+    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.26",
+    "com.amazonaws" % "aws-java-sdk-sqs" % "1.11.26",
+    "com.amazonaws" % "aws-java-sdk-kinesis" % "1.11.26",
+    "com.amazonaws" % "amazon-kinesis-producer" % "0.10.2",
 
     "org.apache.commons" % "commons-compress" % "1.12",
 
