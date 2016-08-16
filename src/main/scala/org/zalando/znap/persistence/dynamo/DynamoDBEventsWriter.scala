@@ -35,10 +35,7 @@ class DynamoDBEventsWriter(snapshotTarget: SnapshotTarget,
     val updateItems = new TableWriteItems(dynamoDBDestination.tableName)
 
     events.foreach { e =>
-      val key = snapshotTarget.key.foldLeft(e.body) { case (agg, k) =>
-        agg.get(k)
-      }.asText()
-
+      val key = Json.getKey(snapshotTarget.key, e.body)
       val item = new Item()
         .withPrimaryKey(Config.DynamoDB.KVTables.Attributes.Key, key)
 

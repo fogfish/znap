@@ -8,19 +8,23 @@
 package org.zalando.znap.pipeline
 
 import akka.actor.ActorSystem
-import akka.stream.{ActorAttributes, Attributes, KillSwitches, UniqueKillSwitch}
 import akka.stream.scaladsl.{Flow, Keep, RunnableGraph, Sink, Source}
+import akka.stream.{ActorAttributes, KillSwitches, UniqueKillSwitch}
 import akka.{Done, NotUsed}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
+import com.amazonaws.services.kinesis.AmazonKinesisClient
+import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
 import org.zalando.znap.config._
-import org.zalando.znap.source.nakadi.objects.EventBatch
-import org.zalando.znap.source.nakadi.{NakadiPublisher, NakadiTokens}
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
+import org.zalando.znap.signalling.kinesis.KinesisSignaller
 import org.zalando.znap.signalling.sqs.SqsSignaller
+import org.zalando.znap.source.nakadi.objects.EventBatch
+import org.zalando.znap.source.nakadi.{NakadiPublisher, NakadiTokens}
+import org.zalando.znap.utils.{Compressor, Json}
 
 import scala.concurrent.Future
 import scala.util.control.NonFatal
@@ -28,6 +32,8 @@ import scala.util.control.NonFatal
 private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
   private type FlowType = Flow[EventBatch, EventBatch, NotUsed]
+
+  private val Encoding = "UTF-8"
 
   private lazy val diskExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
   private lazy val dynamoExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
@@ -48,6 +54,20 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   }
 
   private lazy val sqsClient = new AmazonSQSClient()
+
+  private var kinesisProducerMap = Map.empty[String, KinesisProducer]
+  private def getKinesisProducer(amazonRegion: String): KinesisProducer = {
+    kinesisProducerMap.get(amazonRegion) match {
+      case Some(kinesisProducer) =>
+        kinesisProducer
+      case _ =>
+        val config = new KinesisProducerConfiguration
+        config.setRegion(amazonRegion)
+        val kinesisProducer = new KinesisProducer(config)
+        kinesisProducerMap += amazonRegion -> kinesisProducer
+        kinesisProducer
+    }
+  }
 
   /**
     * Build a pipeline in a form of Akka Streams graph.
@@ -96,6 +116,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
       case _: DiskDestination =>
         new DiskOffsetReader(snapshotTarget)(diskExecutionContext)
+
+      case EmptyDestination =>
+        throw new Exception("EmptyDestination is not supported")
     }
 
     offsetReader.init()
@@ -107,6 +130,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       case nakadiSource: NakadiSource =>
         val nakadiPublisher = new NakadiPublisher(nakadiSource, tokens, offsetReader)(actorSystem)
         nakadiPublisher.getSource()
+
+      case EmptySource =>
+        throw new Exception("EmptySource is not supported")
     }
   }
 
@@ -119,6 +145,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
           }
           EventBatch(eventBatch.cursor, filteredEvents)
         }.async
+
+      case EmptySource =>
+        throw new Exception("EmptySource is not supported")
     }
   }
 
@@ -132,6 +161,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       case _: DiskDestination =>
         (new DiskEventsWriter(snapshotTarget),
           ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher))
+
+      case EmptyDestination =>
+        throw new Exception("EmptyDestination is not supported")
     }
 
     eventsWriter.init()
@@ -147,25 +179,62 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   private def buildSignalStep(snapshotTarget: SnapshotTarget): FlowType = {
     snapshotTarget.signalling match {
       case Some(sqsSignalling: SqsSignalling) =>
-        val signaller = new SqsSignaller(sqsSignalling, sqsClient)
+        buildSqsSignalStep(sqsSignalling, snapshotTarget.key)
 
-        Flow[EventBatch].map { batch =>
-          val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
-            val key = snapshotTarget.key.foldLeft(event.body) { case (agg, k) =>
-              agg.get(k)
-            }.asText()
-            key
-          }
-
-          signaller.signal(valuesToSignal)
-          batch
-        }
-          .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))
-          .async
+      case Some(kinesisSignalling: KinesisSignalling) =>
+        buildKinesisSignalStep(kinesisSignalling, snapshotTarget.key)
 
       case None =>
         Flow[EventBatch].map(x => x) // empty
     }
+  }
+
+  private def buildSqsSignalStep(sqsSignalling: SqsSignalling, keyPath: List[String]): FlowType = {
+    val signaller = new SqsSignaller(sqsSignalling, sqsClient)
+
+    Flow[EventBatch].map { batch =>
+      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
+        sqsSignalling.publishType match {
+          case PublishType.KeysOnly =>
+            Json.getKey(keyPath, event.body)
+
+          case PublishType.EventsUncompressed =>
+            Json.write(event)
+
+          case PublishType.EventsCompressed =>
+            Compressor.compressBase64(Json.write(event))
+        }
+      }
+      signaller.signal(valuesToSignal)
+      batch
+    }
+      .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))
+      .async
+  }
+
+  private def buildKinesisSignalStep(kinesisSignalling: KinesisSignalling, keyPath: List[String]): FlowType = {
+    val signaller = new KinesisSignaller(getKinesisProducer(kinesisSignalling.amazonRegion), kinesisSignalling.stream)
+
+    Flow[EventBatch].map { batch =>
+      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
+        val key = Json.getKey(keyPath, event.body)
+        val value = kinesisSignalling.publishType match {
+          case PublishType.KeysOnly =>
+            key.getBytes(Encoding)
+
+          case PublishType.EventsUncompressed =>
+            Json.write(event).getBytes(Encoding)
+
+          case PublishType.EventsCompressed =>
+            Compressor.compress(Json.write(event))
+        }
+        (key, value)
+      }
+      signaller.signal(valuesToSignal)
+      batch
+    }
+      .addAttributes(ActorAttributes.dispatcher(Config.Akka.KinesisDispatcher))
+      .async
   }
 
   private def buildOffsetWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
@@ -178,6 +247,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       case _: DiskDestination =>
         (new DiskOffsetWriter(snapshotTarget),
           ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher))
+
+      case EmptyDestination =>
+        throw new Exception("EmptyDestination is not supported")
     }
 
     offsetWriter.init()
