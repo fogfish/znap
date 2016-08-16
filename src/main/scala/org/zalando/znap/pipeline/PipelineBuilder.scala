@@ -147,8 +147,6 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   private def buildSignalStep(snapshotTarget: SnapshotTarget): FlowType = {
     snapshotTarget.signalling match {
       case Some(sqsSignalling: SqsSignalling) =>
-        implicit val ec = actorSystem.dispatcher
-
         val signaller = new SqsSignaller(sqsSignalling, sqsClient)
 
         Flow[EventBatch].map { batch =>

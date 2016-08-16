@@ -8,5 +8,6 @@
 package org.zalando.znap.signalling
 
 trait SignallerSync {
+  def signal(value: String): Unit
   def signal(values: List[String]): Unit
 }

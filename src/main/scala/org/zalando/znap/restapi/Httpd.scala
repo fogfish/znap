@@ -16,7 +16,10 @@ import akka.http.scaladsl.server.StandardRoute
 import akka.stream.ActorMaterializer
 import akka.util.{ByteString, Timeout}
 import org.zalando.znap.config.Config
-import org.zalando.znap.service.SnapshotService
+import org.zalando.znap.dump
+import org.zalando.znap.dump.DumpManager
+import org.zalando.znap.service.{DumpKeysService, SnapshotService}
+import org.zalando.znap.utils.Json
 
 import scala.concurrent.Future
 
@@ -35,18 +38,37 @@ class Httpd extends Actor with ActorLogging {
 
   private val targets = Config.Targets.map(t => t.id -> t).toMap
 
-  /** set of active routes */
   val routes = {
+    // List of all available snapshots.
+    val apiSnapshotList =
+      path("snapshots") {
+        get {
+          getSnapshotList
+        }
+      }
+
+    // Get a whole snapshot.
     val apiSnapshot =
       path("snapshots" / Segment) {
-        (targetId: String) =>
+        (targetId: String) => {
           get {
             encodeResponseWith(Gzip) {
               getSnapshot(targetId)
             }
           }
+        }
       }
 
+    val initiateDumpApi =
+      path("snapshots" / Segment / "dump") {
+        (targetId: String) => {
+          post {
+            startDump(targetId)
+          }
+        }
+      }
+
+    // Get an entity from a snapshot.
     val apiSnapshotEntity =
       path("snapshots" / Segment / "entities" / Segment) {
         (targetId: String, key: String) => {
@@ -58,6 +80,15 @@ class Httpd extends Actor with ActorLogging {
         }
       }
 
+    val getDumpStatusApi =
+      path("dumps" / Segment) {
+        (dumpUid: String) => {
+          get {
+            getDumpStatus(dumpUid)
+          }
+        }
+      }
+
     val healthCheck =
       path("health" / "ping") {
         get {
@@ -65,9 +96,109 @@ class Httpd extends Actor with ActorLogging {
         }
       }
 
-    apiSnapshotEntity ~
+    apiSnapshotList ~
+      apiSnapshotEntity ~
       apiSnapshot ~
+      initiateDumpApi ~
+      getDumpStatusApi ~
       healthCheck
+  }
+
+  private def getSnapshotList: StandardRoute = {
+    val targetIds = Config.Targets.map(_.id)
+    val responseString = Json.write(targetIds)
+    val contentType = MediaTypes.`application/json`
+    val response = HttpResponse(entity = HttpEntity(contentType, responseString))
+    complete(response)
+  }
+
+  private def startDump(targetId: String): StandardRoute = {
+    targets.get(targetId) match {
+      case Some(target) =>
+        val result = DumpKeysService.dump(target)(context.system).map {
+          case DumpManager.DumpStarted(dumpUid) =>
+            val responseString = Json.createObject("dumpUid" -> dumpUid)
+              .toString
+            val contentType = MediaTypes.`application/json`
+            HttpResponse(
+              StatusCodes.Accepted,
+              entity = HttpEntity(contentType, responseString)
+            )
+
+          case DumpManager.AnotherDumpAlreadyRunning(dumpUid) =>
+            val responseString = Json.createObject(
+              "message" -> s"Another dump for target $targetId is running",
+              "dumpUid" -> dumpUid
+            ).toString
+            val contentType = MediaTypes.`application/json`
+            HttpResponse(
+              StatusCodes.Conflict,
+              entity = HttpEntity(contentType, responseString)
+            )
+
+          case DumpManager.SignallingNotConfigured =>
+            val responseString = Json.createObject(
+              "message" -> s"Signalling for target $targetId is not configured"
+            ).toString
+            val contentType = MediaTypes.`application/json`
+            HttpResponse(
+              StatusCodes.BadRequest,
+              entity = HttpEntity(contentType, responseString)
+            )
+        }
+        complete(result)
+
+      case None =>
+        complete(unknownTargetResponse(targetId))
+    }
+  }
+
+  private def getDumpStatus(dumpUid: String): StandardRoute = {
+    val result = DumpKeysService.getDumpStatus(dumpUid)(context.system).map {
+      case dump.DumpRunning =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> "RUNNING",
+          "message" -> s"Dump is running"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dump.DumpFinishedSuccefully =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> "FINISHED_SUCCESSFULLY",
+          "message" -> s"Dump finished successfully"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dump.DumpFailed(errorMessage) =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> "FAILED",
+          "message" -> s"""Dump failed with error message: "$errorMessage""""
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dump.UnknownDump =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "message" -> s"Unknown dump $dumpUid"
+        ).toString
+        HttpResponse(
+          StatusCodes.NotFound,
+          entity = HttpEntity(contentType, responseString)
+        )
+    }
+    complete(result)
   }
 
   private def getSnapshotEntity(targetId: String, key: String): StandardRoute = {
@@ -82,15 +213,27 @@ class Httpd extends Actor with ActorLogging {
               HttpResponse(entity = HttpEntity(str))
 
             case None =>
-              HttpResponse(StatusCodes.NotFound, entity = HttpEntity(s"Unknown key $key"))
+              val contentType = MediaTypes.`application/json`
+              val responseString = s"""{"message": "Unknown key $targetId"}"""
+              HttpResponse(
+                StatusCodes.NotFound,
+                entity = HttpEntity(contentType, responseString)
+              )
           }
         }
 
       case None =>
-        complete {
-          HttpResponse(StatusCodes.NotFound, entity = HttpEntity(s"Unknown target $targetId"))
-        }
+        complete(unknownTargetResponse(targetId))
     }
+  }
+
+  private def unknownTargetResponse(targetId: String): HttpResponse = {
+    val contentType = MediaTypes.`application/json`
+    val responseString = s"""{"message": "Unknown target $targetId"}"""
+    HttpResponse(
+      StatusCodes.NotFound,
+      entity = HttpEntity(contentType, responseString)
+    )
   }
 
 
@@ -138,4 +281,5 @@ class Httpd extends Actor with ActorLogging {
     case x: Any =>
       log.warning(s"unexpected message $x")
   }
+
 }

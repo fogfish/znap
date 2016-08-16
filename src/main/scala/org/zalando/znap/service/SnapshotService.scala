@@ -23,15 +23,12 @@ object SnapshotService {
   def getSnapshotKeys(target: SnapshotTarget): Source[String, Any] = {
     assert(totalSegments > 0)
 
-    val client = {
-      val c = new AmazonDynamoDBClient()
-      c.withEndpoint(target.destination.asInstanceOf[DynamoDBDestination].uri.toString)
-      c
-    }
-
     val sources = (0 until totalSegments).toVector.map { segment =>
       target.destination match {
         case d: DynamoDBDestination =>
+          val client = new AmazonDynamoDBClient()
+          client.withEndpoint(d.uri.toString)
+
           val iterator = new ScannerIterator(
             client, d.tableName, Config.DynamoDB.KVTables.Attributes.Key,
             scanItemLimit, totalSegments, segment)

@@ -14,6 +14,7 @@ import org.zalando.znap.source.nakadi.OAuth
 sealed trait SnapshotSource {
 
 }
+case object EmptySource extends SnapshotSource
 
 final case class NakadiSource(uri: URI,
                               eventType: String,
@@ -24,6 +25,7 @@ final case class NakadiSource(uri: URI,
 sealed trait SnapshotDestination {
 
 }
+case object EmptyDestination extends SnapshotDestination
 
 final case class DynamoDBDestination(uri: URI,
                                      tableName: String,

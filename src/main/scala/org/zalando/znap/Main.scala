@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory
 import org.zalando.scarl.Supervisor.Specs
 import org.zalando.scarl.{RootSupervisor, ScarlSupervisor}
 import org.zalando.znap.config._
+import org.zalando.znap.dump.DumpManager
 import org.zalando.znap.source.nakadi.{NakadiTokens, OAuth}
 import org.zalando.znap.pipeline.PipelineManager
 import org.zalando.znap.restapi.Httpd
@@ -47,6 +48,8 @@ object Main extends App {
   )
 
   actorSystem.actorOf(Props(classOf[PipelineManager], tokens))
+
+  actorSystem.actorOf(Props(classOf[DumpManager], tokens), DumpManager.name)
 }
 
 class SubSystemsSupervisor extends RootSupervisor {
