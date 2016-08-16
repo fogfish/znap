@@ -8,7 +8,7 @@
 package org.zalando.znap.utils
 
 import com.fasterxml.jackson.databind.node.{JsonNodeFactory, ObjectNode}
-import com.fasterxml.jackson.databind.{ObjectMapper, SerializationFeature}
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper, SerializationFeature}
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
@@ -44,5 +44,11 @@ object Json {
     }
 
     obj
+  }
+
+  def getKey(keyPath: List[String], body: JsonNode): String = {
+    keyPath.foldLeft(body) { case (agg, k) =>
+      agg.get(k)
+    }.asText()
   }
 }

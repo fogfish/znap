@@ -24,10 +24,7 @@ class DiskEventsWriter(override protected val snapshotTarget: SnapshotTarget) ex
 
   override def write(events: List[NakadiEvent]): Unit = {
     events.foreach { e =>
-      val key = snapshotTarget.key.foldLeft(e.body) { case (agg, k) =>
-        agg.get(k)
-      }.asText()
-
+      val key = Json.getKey(snapshotTarget.key, e.body)
       val jsonString = Json.write(e)
 
       // TODO compression -?

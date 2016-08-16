@@ -34,7 +34,18 @@ final case class DiskDestination() extends SnapshotDestination
 
 sealed trait Signalling
 
-final case class SqsSignalling(uri: URI) extends Signalling
+final case class SqsSignalling(uri: URI,
+                               publishType: PublishType) extends Signalling
+final case class KinesisSignalling(amazonRegion: String,
+                                   stream: String,
+                                   publishType: PublishType) extends Signalling
+
+sealed trait PublishType
+object PublishType {
+  case object KeysOnly extends PublishType
+  case object EventsUncompressed extends PublishType
+  case object EventsCompressed extends PublishType
+}
 
 final case class SnapshotTarget(id: String,
                                 source: SnapshotSource,
