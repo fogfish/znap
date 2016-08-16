@@ -46,6 +46,7 @@ object Config {
     val DiskDBDispatcher = "disk-dispatcher"
     val DynamoDBDispatcher = "dynamodb-dispatcher"
     val SqsDispatcher = "sqs-dispatcher"
+    val KinesisDispatcher = "kinesis-dispatcher"
   }
 
 
@@ -157,7 +158,14 @@ object Config {
       Try(signallingConfig.getString("type")) match {
         case Success("sqs") =>
           val uri = new URI(signallingConfig.getString("url"))
-          Some(SqsSignalling(uri))
+          val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
+          Some(SqsSignalling(uri, publishType))
+
+        case Success("kinesis") =>
+          val amazonRegion = signallingConfig.getString("amazon-region")
+          val streamName = signallingConfig.getString("stream")
+          val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
+          Some(KinesisSignalling(amazonRegion, streamName, publishType))
 
         case Failure(_: ConfigException.Missing) =>
           None
@@ -171,6 +179,15 @@ object Config {
     val compress = configObject.getBoolean("compress")
 
     SnapshotTarget(id, source, destination, signalling, key, compress)
+  }
+
+  private def parsePublishTypeString(publishTypeString: String): PublishType = {
+    publishTypeString match {
+      case "keys-only" => PublishType.KeysOnly
+      case "events-uncompressed" => PublishType.EventsUncompressed
+      case "events-compressed" => PublishType.EventsCompressed
+      case other => throw new Exception(s"Unknown publish type $other")
+    }
   }
 
   private def resolvePort(scheme: String, port: Int): Int =
