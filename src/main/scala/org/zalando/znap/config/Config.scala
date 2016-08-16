@@ -175,10 +175,32 @@ object Config {
       }
     }
 
+    val dumping = {
+      val dumpingConfig = configObject.getObject("dumping").toConfig
+      Try(dumpingConfig.getString("type")) match {
+        case Success("sqs") =>
+          val uri = new URI(dumpingConfig.getString("url"))
+          val publishType = parsePublishTypeString(dumpingConfig.getString("publish-type"))
+          Some(SqsDumping(uri, publishType))
+
+        case Success("kinesis") =>
+          val amazonRegion = dumpingConfig.getString("amazon-region")
+          val streamName = dumpingConfig.getString("stream")
+          val publishType = parsePublishTypeString(dumpingConfig.getString("publish-type"))
+          Some(KinesisDumping(amazonRegion, streamName, publishType))
+
+        case Failure(_: ConfigException.Missing) =>
+          None
+
+        case Failure(ex) =>
+          throw ex
+      }
+    }
+
     val key = configObject.getString("key").split('.').toList
     val compress = configObject.getBoolean("compress")
 
-    SnapshotTarget(id, source, destination, signalling, key, compress)
+    SnapshotTarget(id, source, destination, signalling, dumping, key, compress)
   }
 
   private def parsePublishTypeString(publishTypeString: String): PublishType = {

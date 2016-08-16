@@ -5,16 +5,16 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.dump
+package org.zalando.znap.dumps
 
 import akka.Done
 import akka.actor.{Actor, ActorLogging}
-import akka.stream.scaladsl.{Flow, Keep, Sink, RunnableGraph}
+import akka.stream.scaladsl.{Flow, Keep, RunnableGraph, Sink}
 import akka.stream.{ActorAttributes, ActorMaterializer}
 import com.amazonaws.services.sqs.AmazonSQSClient
-import org.zalando.znap.config.{Config, SnapshotTarget, SqsSignalling}
+import org.zalando.znap.config.{Config, SnapshotTarget, SqsDumping}
+import org.zalando.znap.dumping.sqs.SqsDumper
 import org.zalando.znap.service.SnapshotService
-import org.zalando.znap.signalling.sqs.SqsSignaller
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 
@@ -47,10 +47,10 @@ class SqsDumpRunner(tokens: NakadiTokens,
     val source = SnapshotService.getSnapshotKeys(target)
 
     val sqsClient = new AmazonSQSClient()
-    val sqsSignalling = target.signalling.get.asInstanceOf[SqsSignalling]
-    val signaller = new SqsSignaller(sqsSignalling, sqsClient)
+    val sqsDumping = target.dumping.get.asInstanceOf[SqsDumping]
+    val dumper = new SqsDumper(sqsDumping, sqsClient)
     val signallingStage = Flow[String].map { key =>
-      signaller.signal(key)
+      dumper.dump(key)
       key
     }
       .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))

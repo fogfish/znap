@@ -5,13 +5,13 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.dump
+package org.zalando.znap.dumps
 
 import java.util.UUID
 
 import akka.actor.SupervisorStrategy.{Escalate, Stop}
 import akka.actor.{Actor, ActorLogging, OneForOneStrategy, Props, SupervisorStrategy}
-import org.zalando.znap.config.{SnapshotTarget, SqsSignalling}
+import org.zalando.znap.config.{SnapshotTarget, SqsDumping, SqsSignalling}
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 
@@ -56,8 +56,8 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
       case None =>
         val uid = s"${target.id}-${UUID.randomUUID().toString}"
 
-        val dumpRunnerProps = target.signalling.map {
-          case _: SqsSignalling =>
+        val dumpRunnerProps = target.dumping.map {
+          case _: SqsDumping =>
             Props(classOf[SqsDumpRunner], tokens, target)
         }
 
@@ -68,7 +68,7 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
             DumpStarted(uid)
 
           case None =>
-            SignallingNotConfigured
+            DumpingNotConfigured
         }
     }
   }
@@ -86,7 +86,7 @@ object DumpManager {
   sealed trait DumpCommandResult
   final case class DumpStarted(dumpUid: DumpUID) extends DumpCommandResult
   final case class AnotherDumpAlreadyRunning(dumpUid: DumpUID) extends DumpCommandResult
-  case object SignallingNotConfigured extends DumpCommandResult
+  case object DumpingNotConfigured extends DumpCommandResult
 
   final case class GetDumpStatus(dumpUid: DumpUID)
 }
