@@ -9,15 +9,13 @@ package org.zalando.znap.config
 
 import java.net.URI
 
-import org.zalando.znap.source.nakadi.OAuth
+import org.zalando.znap.TargetId
 
 sealed trait SnapshotSource
 case object EmptySource extends SnapshotSource
 final case class NakadiSource(uri: URI,
                               eventType: String,
-                              eventClass: String) extends SnapshotSource {
-  val id: String = s"${eventType}_$eventClass"
-}
+                              eventClass: String) extends SnapshotSource
 
 
 sealed trait SnapshotDestination
@@ -38,7 +36,7 @@ final case class KinesisSignalling(amazonRegion: String,
 
 sealed trait Dumping
 final case class SqsDumping(uri: URI,
-                               publishType: PublishType) extends Dumping
+                            publishType: PublishType) extends Dumping
 final case class KinesisDumping(amazonRegion: String,
                                 stream: String,
                                 publishType: PublishType) extends Dumping
@@ -52,11 +50,10 @@ object PublishType {
 }
 
 
-final case class SnapshotTarget(id: String,
+final case class SnapshotTarget(id: TargetId,
                                 source: SnapshotSource,
                                 destination: SnapshotDestination,
                                 signalling: Option[Signalling],
                                 dumping: Option[Dumping],
                                 key: List[String],
-                                compress: Boolean) {
-}
+                                compress: Boolean)

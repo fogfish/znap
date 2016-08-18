@@ -5,16 +5,17 @@
   * This software may be modified and distributed under the terms
   * of the MIT license.  See the LICENSE file for details.
   */
-package org.zalando.znap.service
+package org.zalando.znap.restapi
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
-import org.zalando.znap.service.DynamoDBEntityReader.{Entity, GetEntityCommand}
+import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with NoUnexpectedMessages with ActorLogging {
+  import EntityReaderService._
 
   private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
 
@@ -50,9 +51,7 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with No
 }
 
 object DynamoDBEntityReader {
-
-  final case class GetEntityCommand(key: String)
-
-  final case class Entity(key: String, value: Option[String])
-
+  def props(snapshotTarget: SnapshotTarget): Props = {
+    Props(classOf[DynamoDBEntityReader], snapshotTarget)
+  }
 }

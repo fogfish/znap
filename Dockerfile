@@ -24,4 +24,6 @@ ENV  JAVA_OPTS="\
    -XX:MaxPermSize=128m \
    -XX:+UseParallelGC"
 
+EXPOSE 8080
+
 ENTRYPOINT java ${JAVA_OPTS} -Dconfig.resource=/application.conf -jar $APP.jar

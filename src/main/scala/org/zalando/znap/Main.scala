@@ -13,7 +13,7 @@ import org.zalando.scarl.Supervisor.Specs
 import org.zalando.scarl.{RootSupervisor, ScarlSupervisor}
 import org.zalando.znap.config._
 import org.zalando.znap.dumps.DumpManager
-import org.zalando.znap.source.nakadi.{NakadiTokens, OAuth}
+import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.pipeline.PipelineManager
 import org.zalando.znap.restapi.Httpd
 
@@ -21,8 +21,6 @@ import scala.concurrent.duration._
 
 
 object Main extends App {
-  private val uid = "znap"
-
   val logger = LoggerFactory.getLogger(Main.getClass)
   logger.info(s"Application instance started with ID ${Config.ApplicationInstanceId}")
 
@@ -36,7 +34,7 @@ object Main extends App {
 
   val tokens = new NakadiTokens()
 
-  implicit val actorSystem = ActorSystem(uid)
+  implicit val actorSystem = ActorSystem("znap")
 
   actorSystem.registerOnTermination {
     LoggerFactory.getLogger(Main.getClass).info("Stopping token refreshing")
@@ -44,18 +42,26 @@ object Main extends App {
   }
 
   actorSystem.rootSupervisor(
-    Specs(uid, Props(classOf[SubSystemsSupervisor]))
+    Specs(SubSystemsSupervisor.name, SubSystemsSupervisor.props())
   )
 
   actorSystem.actorOf(Props(classOf[PipelineManager], tokens))
 
-  actorSystem.actorOf(Props(classOf[DumpManager], tokens), DumpManager.name)
+  actorSystem.actorOf(DumpManager.props(tokens), DumpManager.name)
 }
 
 class SubSystemsSupervisor extends RootSupervisor {
   override def supervisorStrategy = strategyOneForOne(3, 2.hours)
 
   def specs = Seq(
-      Specs("httpd", Props[Httpd])
+      Specs(Httpd.name, Props[Httpd])
   )
+}
+
+object SubSystemsSupervisor {
+  val name = "znap"
+
+  def props(): Props = {
+    Props(classOf[SubSystemsSupervisor])
+  }
 }
