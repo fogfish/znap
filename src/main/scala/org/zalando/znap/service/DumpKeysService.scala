@@ -7,12 +7,13 @@ import org.zalando.znap.dumps._
 import org.zalando.znap.dumps.DumpManager
 
 import scala.concurrent.Future
-import scala.concurrent.duration._
 
 object DumpKeysService {
+  import scala.concurrent.duration._
   import akka.pattern.ask
 
-  def dump(target: SnapshotTarget)(actorSystem: ActorSystem): Future[DumpManager.DumpCommandResult] = {
+  def dump(target: SnapshotTarget)
+          (implicit actorSystem: ActorSystem): Future[DumpManager.DumpCommandResult] = {
     implicit val ec = actorSystem.dispatcher
     getActor(actorSystem).flatMap { ref =>
       implicit val askTimeout = Timeout(10.seconds)
@@ -21,7 +22,8 @@ object DumpKeysService {
     }
   }
 
-  def getDumpStatus(dumpUid: String)(actorSystem: ActorSystem): Future[DumpStatus] = {
+  def getDumpStatus(dumpUid: String)
+                   (implicit actorSystem: ActorSystem): Future[DumpStatus] = {
     implicit val ec = actorSystem.dispatcher
     getActor(actorSystem).flatMap { ref =>
       implicit val askTimeout = Timeout(10.seconds)

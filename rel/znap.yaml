@@ -119,6 +119,16 @@ Resources:
                Action: sts:AssumeRole
          Path: /
          Policies:
+           -   PolicyName: AmazonSQSFullAccess
+               PolicyDocument:
+                  Version: "2012-10-17"
+                  Statement:
+                  -  Effect: Allow
+                     Action:
+                        - sqs:ReceiveMessage
+                        - sqs:SendMessage
+                        - sqs:SendMessageBatch
+                     Resource: arn:aws:sqs:*:*:*
            -   PolicyName: AmazonEC2Describe
                PolicyDocument:
                   Version: "2012-10-17"

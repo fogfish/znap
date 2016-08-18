@@ -89,4 +89,9 @@ object DumpManager {
   case object DumpingNotConfigured extends DumpCommandResult
 
   final case class GetDumpStatus(dumpUid: DumpUID)
+
+
+  def props(tokens: NakadiTokens): Props = {
+    Props(classOf[DumpManager], tokens)
+  }
 }

@@ -154,18 +154,21 @@ object Config {
     }
 
     val signalling = {
-      val signallingConfig = configObject.getObject("signalling").toConfig
-      Try(signallingConfig.getString("type")) match {
-        case Success("sqs") =>
-          val uri = new URI(signallingConfig.getString("url"))
-          val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
-          Some(SqsSignalling(uri, publishType))
+      Try(configObject.getObject("signalling")) match {
+        case Success(signallingObject) =>
+          val signallingConfig = signallingObject.toConfig
+          signallingConfig.getString("type") match {
+            case "sqs" =>
+              val uri = new URI(signallingConfig.getString("url"))
+              val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
+              Some(SqsSignalling(uri, publishType))
 
-        case Success("kinesis") =>
-          val amazonRegion = signallingConfig.getString("amazon-region")
-          val streamName = signallingConfig.getString("stream")
-          val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
-          Some(KinesisSignalling(amazonRegion, streamName, publishType))
+            case "kinesis" =>
+              val amazonRegion = signallingConfig.getString("amazon-region")
+              val streamName = signallingConfig.getString("stream")
+              val publishType = parsePublishTypeString(signallingConfig.getString("publish-type"))
+              Some(KinesisSignalling(amazonRegion, streamName, publishType))
+          }
 
         case Failure(_: ConfigException.Missing) =>
           None
