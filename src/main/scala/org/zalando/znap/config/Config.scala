@@ -244,7 +244,7 @@ object Config {
   private def readInstanceConfig(): TypesafeConfig = {
     val configFile = System.getenv("ZNAP_CONFIG_FILE")
     if (configFile == null) {
-      TypesafeConfigFactory.empty()
+      throw new Exception("ZNAP_CONFIG_FILE environment variable must be set")
     } else {
       val parts = configFile.split("://", 2)
       if (parts.length < 2) {

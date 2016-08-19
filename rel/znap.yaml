@@ -54,7 +54,7 @@ SenzaComponents:
          mint_bucket: "{{Arguments.Mint}}"
          runtime: Docker
          networking: host
-         source: "registry.opensource.zalan.do/ie/znap:{{Arguments.ImageVersion}}"
+         source: "registry.opensource.zalan.do/poirot/znap:{{Arguments.ImageVersion}}"
          ports:
             8080: 8080
          environment:
