@@ -7,17 +7,19 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.headers.{Authorization, OAuth2BearerToken}
-import akka.stream.scaladsl.{Merge, Source}
+import akka.stream.scaladsl.{Framing, Source}
 import akka.stream.{ActorMaterializerSettings, _}
+import akka.util.ByteString
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.slf4j.LoggerFactory
+import org.zalando.znap.PartitionId
 import org.zalando.znap.config.{Config, NakadiSource}
 import org.zalando.znap.source.nakadi.objects.{EventBatch, NakadiPartition}
 import org.zalando.znap.objects.Partition
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.utils._
 
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
 import scala.util.control.NonFatal
 
 class NakadiPublisher(nakadiSource: NakadiSource,
@@ -32,11 +34,87 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   private val http = Http(actorSystem)
   private implicit val executionContext = actorSystem.dispatcher
 
-  def getSource(): Source[EventBatch, NotUsed] = {
+  /**
+    * Create a stream source for each partition.
+    */
+  def createSources(): List[(PartitionId, Source[EventBatch, NotUsed])] = {
     // Get existing partitions from Nakadi.
-    val partitionsF = getPartitions.flatMap {
+    val partitionsListF = getPartitions
+    // Get saved offsets.
+    val offsetsMapF = offsetReader.getLastOffsets
+
+    // This code is called only once on the start,
+    // and staying with Future would complicate it badly,
+    // so we'll just block and wait for the results.
+    import scala.concurrent.duration._
+    val waitDuration = 10.seconds
+    val partitionsList = Await.result(partitionsListF, waitDuration)
+    val offsetsMap = Await.result(offsetsMapF, waitDuration)
+
+    // Calculate offsets for each partition to start consuming from.
+    val offsetsToStart = partitionsList.map { p =>
+      val offset = offsetsMap.get(p.partition) match {
+        case Some(storedOffset) =>
+          // Check offset availability considering the stored offset.
+          checkStoredOffset(storedOffset, p)
+          storedOffset
+
+        case _ => "BEGIN"
+      }
+      p.partition -> offset
+    }
+
+    offsetsToStart.map {
+      case (partition, offset) =>
+        (partition, createSourceForPartition(partition, offset))
+    }
+  }
+
+  /**
+    * Check if it's possible to start consuming from the stored offset,
+    * given the partition with its available offsets.
+    * @param partition partition to be consumed from `storedOffset`
+    */
+  private def checkStoredOffset(storedOffset: String, partition: Partition): Unit = {
+    val storedOffsetL = storedOffset.toLong
+    val oldestAvailableOffsetL = partition.oldestAvailableOffset.toLong
+    val newestAvailableOffsetL = partition.newestAvailableOffset.toLong
+    if (storedOffsetL < oldestAvailableOffsetL || storedOffsetL > newestAvailableOffsetL) {
+      val message = "Available offsets: " +
+        s"${partition.oldestAvailableOffset}-${partition.newestAvailableOffset}, " +
+        s"stored offset: $storedOffset"
+      logger.error(message)
+      throw new InvalidOffsetException(partition.partition, storedOffset, message)
+    }
+  }
+
+  private def createSourceForPartition(partition: String,
+                                       offset: String): Source[EventBatch, NotUsed] = {
+    val recoveryStrategy =
+      // knownOffset is None to indicate that it should be read from a store.
+      new StreamRecoveryStrategy(() => createSourceForPartition0(partition, None))
+
+    createSourceForPartition0(partition, Some(offset))
+      .recoverWithRetries(-1, recoveryStrategy)
+    .async
+  }
+
+  /**
+    * Get partitions list from Nakadi.
+    */
+  private def getPartitions: Future[List[Partition]] = {
+    // Request partitions of the topic.
+    val scheme = nakadiSource.uri.getScheme
+    val hostAndPort = nakadiSource.uri.getAuthority
+    val uri = s"$scheme://$hostAndPort/event-types/${nakadiSource.eventType}/partitions"
+    val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
+    val request = HttpRequest(
+      uri = uri,
+      headers = List(authorizationHeader))
+
+    http.singleRequest(request).flatMap {
       case HttpResponse(StatusCodes.OK, _, entity, _) =>
-        entity.dataBytes.collectAsObject[List[NakadiPartition]]().map { nakadiPartitions =>
+        entity.dataBytes.collectAsObject[List[NakadiPartition]].map { nakadiPartitions =>
           val partitions = nakadiPartitions.map { np =>
             Partition(np.partition, np.oldestAvailableOffset, np.newestAvailableOffset)
           }
@@ -48,64 +126,19 @@ class NakadiPublisher(nakadiSource: NakadiSource,
           throw new Exception(s"Error response on getting partitions, ${unknownResponse.status} $content")
         }
     }
-
-    // Get saved offsets.
-    val offsetsF = offsetReader.getLastOffsets
-
-    val offsetsToStartF = (partitionsF zip offsetsF).map {
-      case (partitionsList, offsetsMap) =>
-        partitionsList.map {
-          case Partition(partition, oldestAvailableOffset, newestAvailableOffset) =>
-            val offset = offsetsMap.get(partition) match {
-              case Some(storedOffset) =>
-                // Check offset availability considering the stored offset.
-                val storedOffsetL = storedOffset.toLong
-                val oldestAvailableOffsetL = oldestAvailableOffset.toLong
-                val newestAvailableOffsetL = newestAvailableOffset.toLong
-                if (storedOffsetL < oldestAvailableOffsetL || storedOffsetL > newestAvailableOffsetL) {
-                  val message = s"Available offsets: $oldestAvailableOffset-$newestAvailableOffset, " +
-                    s"stored offset: $storedOffset"
-                  logger.error(message)
-                  throw new InvalidOffsetException(partition, storedOffset, message)
-                }
-
-                storedOffset
-
-              case _ => "BEGIN"
-            }
-            partition -> offset
-        }
-    }
-
-    Source.fromFuture(offsetsToStartF).flatMapConcat { offsetsToStart =>
-      val partitionStreams = offsetsToStart.map {
-        case (partition, offset) =>
-          getSourceForPartition(partition, offset)
-      }
-
-      if (partitionStreams.size == 1) {
-        partitionStreams.head
-      } else {
-        val s1 = partitionStreams.head
-        val s2 = partitionStreams(1)
-        val rest = partitionStreams.drop(2)
-        Source.combine(s1, s2, rest:_*)(Merge(_))
-      }
-    }
   }
 
-  private def getSourceForPartition(partition: String,
-                                    offset: String): Source[EventBatch, NotUsed] = {
-    val recoveryStrategy =
-      new StreamRecoveryStrategy(() => getSourceForPartition0(partition, None))
-
-    getSourceForPartition0(partition, Some(offset))
-      .recoverWithRetries(-1, recoveryStrategy)
-    .async
-  }
-
-  private def getSourceForPartition0(partition: String,
-                                     knownOffset: Option[String]): Source[EventBatch, NotUsed] = {
+  /**
+    * Create a source for the partition.
+    *
+    * If `knownOffset` is Some(_), it's used as a start offset;
+    * otherwise the last offset would be received (if exists) and used.
+    * @param partition
+    * @param knownOffset
+    * @return
+    */
+  private def createSourceForPartition0(partition: String,
+                                        knownOffset: Option[String]): Source[EventBatch, NotUsed] = {
     val offsetToUseF = knownOffset match {
       case Some(offset) =>
         Future.successful(offset)
@@ -126,23 +159,10 @@ class NakadiPublisher(nakadiSource: NakadiSource,
             processPreconditionFailedResponse(partition, offset, response)
 
           case unknownResponse: HttpResponse =>
-            processUnkownResponse(partition, unknownResponse)
+            processUnknownResponse(partition, unknownResponse)
         }
 
     }
-  }
-
-  private def getPartitions: Future[HttpResponse] = {
-    // Request partitions of the topic.
-    val scheme = nakadiSource.uri.getScheme
-    val hostAndPort = nakadiSource.uri.getAuthority
-    val uri = s"$scheme://$hostAndPort/event-types/${nakadiSource.eventType}/partitions"
-    val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
-    val request = HttpRequest(
-      uri = uri,
-      headers = List(authorizationHeader))
-
-    http.singleRequest(request)
   }
 
   private def createPartitionResponseSource(partition: String, offset: String): Source[HttpResponse, NotUsed] = {
@@ -166,17 +186,11 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   private def processNormalResponse(response: HttpResponse): Source[EventBatch, Any] = {
     response.entity.withSizeLimit(Config.HttpStreamingMaxSize)
       .dataBytes
-      // Coalesce chunks into a line.
-      .scan("") { (acc, chunk) =>
-      if (acc.contains("\n")) {
-        chunk.utf8String
-      } else {
-        acc + chunk.utf8String
-      }
-    }
-    .filter(_.contains("\n"))
 
-    .map(Json.read[EventBatch])
+      // Coalesce chunks into a line.
+      .via(Framing.delimiter(ByteString("\n"), Int.MaxValue))
+
+      .map(bs => Json.read[EventBatch](bs.utf8String))
   }
 
   private def processPreconditionFailedResponse(partition: String, offset: String, response: HttpResponse): Source[Nothing, Any] = {
@@ -194,7 +208,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     }
   }
 
-  private def processUnkownResponse(partition: String, unknownResponse: HttpResponse): Source[Nothing, Any] = {
+  private def processUnknownResponse(partition: String, unknownResponse: HttpResponse): Source[Nothing, Any] = {
     unknownResponse.entity.dataBytes.map { bs =>
       val msg = s"Unknown response on getting events from partition $partition: $unknownResponse ${bs.utf8String}"
       throw new Exception(msg)

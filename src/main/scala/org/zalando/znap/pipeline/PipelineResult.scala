@@ -13,7 +13,9 @@ sealed trait PipelineResult {
 }
 
 final case class PipelineFinished(id: String,
+                                  partition: String,
                                   pipelineInstanceId: String) extends PipelineResult
 final case class PipelineFailed(id: String,
+                                partition: String,
                                 pipelineInstanceId: String,
                                 cause: Throwable) extends PipelineResult

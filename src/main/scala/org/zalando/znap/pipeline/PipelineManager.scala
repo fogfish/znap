@@ -37,16 +37,20 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
   private def startPipeline(snapshotTarget: SnapshotTarget): Unit = {
     val id = snapshotTarget.id
     val pipelineInstanceId = UUID.randomUUID().toString
-    val pipeline = pipelineBuilder.build(id, pipelineInstanceId, snapshotTarget)
-    val (killSwitch, completionFuture) = pipeline.run()
-    killSwitches += id -> killSwitch
-    pipelineInstances += id -> pipelineInstanceId
-    completionFuture pipeTo self
+
+    pipelineBuilder.build(id, pipelineInstanceId, snapshotTarget).foreach {
+      case (partitionId, pipeline) =>
+        log.info(s"Pipeline $id for partition $partitionId started")
+        val (killSwitch, completionFuture) = pipeline.run()
+        killSwitches += (id + partitionId) -> killSwitch
+        pipelineInstances += (id + partitionId) -> pipelineInstanceId
+        completionFuture pipeTo self
+    }
   }
 
   override def receive: Receive = {
-    case p @ PipelineFinished(id, pipelineInstanceId) if sender() == self =>
-      val registeredPipelineInstanceId = pipelineInstances(id)
+    case p @ PipelineFinished(id, partitionId, pipelineInstanceId) if sender() == self =>
+      val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
       assert(registeredPipelineInstanceId == pipelineInstanceId)
 
       log.error(s"Got $p, but pipelines should never finish, shutting down.")
@@ -55,12 +59,12 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
       }
       context.stop(self)
 
-    case p @ PipelineFailed(id, pipelineInstanceId, cause) if sender() == self =>
-      val registeredPipelineInstanceId = pipelineInstances(id)
+    case p @ PipelineFailed(id, partitionId, pipelineInstanceId, cause) if sender() == self =>
+      val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
       assert(registeredPipelineInstanceId == pipelineInstanceId)
 
-      log.error(s"Pipeline $id failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
-      val target = targets(id)
+      log.error(s"Pipeline $id for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
+      val target = targets(id + partitionId)
       startPipeline(target)
   }
 }

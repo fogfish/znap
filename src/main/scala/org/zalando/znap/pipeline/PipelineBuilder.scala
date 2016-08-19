@@ -16,6 +16,7 @@ import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.kinesis.AmazonKinesisClient
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
+import org.zalando.znap.PartitionId
 import org.zalando.znap.config._
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
@@ -75,37 +76,45 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
     * @param pipelineInstanceId the id for a particular instance of the pipeline.
     * @param snapshotTarget snapshot target to be handled by the pipeline.
     */
-  def build(id: String, pipelineInstanceId: String, snapshotTarget: SnapshotTarget): RunnableGraph[(UniqueKillSwitch, Future[PipelineResult])] = {
+  def build(id: String, pipelineInstanceId: String, snapshotTarget: SnapshotTarget): List[(String, RunnableGraph[(UniqueKillSwitch, Future[PipelineResult])])] = {
     val offsetReader = buildOffsetReader(snapshotTarget)
-    val source = buildSource(snapshotTarget.source, offsetReader)
-    val filterByEventClassStep = buildFilterByEventClassStep(snapshotTarget.source)
-    val dataWriteStep = buildDataWriteStep(snapshotTarget)
-    val signalStep = buildSignalStep(snapshotTarget)
-    val offsetWriteStep = buildOffsetWriteStep(snapshotTarget)
+    val sources = buildSource(snapshotTarget.source, offsetReader)
 
-    val sink = Sink.ignore
-//    val sink = Sink.foreach(println)
+    sources.map { case (partitionId, source) =>
+      val withPartitionId = s"$id-partition$partitionId"
+      val withPartitionInstanceId = s"$pipelineInstanceId-partition$partitionId"
 
-    source
-      .via(filterByEventClassStep)
-      .via(dataWriteStep)
-      .via(signalStep)
-      .via(offsetWriteStep)
-      .viaMat(KillSwitches.single)(Keep.right)
-      .toMat(sink)(Keep.both)
-      .named(s"Pipeline $id-$pipelineInstanceId")
+      val filterByEventClassStep = buildFilterByEventClassStep(snapshotTarget.source)
+      val dataWriteStep = buildDataWriteStep(snapshotTarget)
+      val signalStep = buildSignalStep(snapshotTarget)
+      val offsetWriteStep = buildOffsetWriteStep(snapshotTarget)
 
-      .mapMaterializedValue { case (killSwitch, f) =>
-        implicit val ec = actorSystem.dispatcher
+      val sink = Sink.ignore
+      //    val sink = Sink.foreach(println)
 
-        val mappedFuture = f.map { case Done =>
-          PipelineFinished(id, pipelineInstanceId)
+      val graph = source
+        .via(filterByEventClassStep)
+        .via(dataWriteStep)
+        .via(signalStep)
+        .via(offsetWriteStep)
+        .viaMat(KillSwitches.single)(Keep.right)
+        .toMat(sink)(Keep.both)
+        .named(s"Pipeline $id-$pipelineInstanceId-partition$partitionId")
+
+        .mapMaterializedValue { case (killSwitch, f) =>
+          implicit val ec = actorSystem.dispatcher
+
+          val mappedFuture = f.map { case Done =>
+            PipelineFinished(id, partitionId, withPartitionInstanceId)
+          }
+            .recover {
+              case NonFatal(ex) => PipelineFailed(id, partitionId, withPartitionInstanceId, ex)
+            }
+          (killSwitch, mappedFuture)
         }
-        .recover {
-          case NonFatal(ex) => PipelineFailed(id, pipelineInstanceId, ex)
-        }
-        (killSwitch, mappedFuture)
-      }
+
+      (partitionId, graph)
+    }
   }
 
   private def buildOffsetReader(snapshotTarget: SnapshotTarget): OffsetReaderSync = {
@@ -125,11 +134,11 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
     offsetReader
   }
 
-  private def buildSource(source: SnapshotSource, offsetReader: OffsetReaderSync): Source[EventBatch, Any] = {
+  private def buildSource(source: SnapshotSource, offsetReader: OffsetReaderSync): List[(PartitionId, Source[EventBatch, Any])] = {
     source match {
       case nakadiSource: NakadiSource =>
         val nakadiPublisher = new NakadiPublisher(nakadiSource, tokens, offsetReader)(actorSystem)
-        nakadiPublisher.getSource()
+        nakadiPublisher.createSources()
 
       case EmptySource =>
         throw new Exception("EmptySource is not supported")
