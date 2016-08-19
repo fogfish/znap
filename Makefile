@@ -10,7 +10,7 @@ APP     = znap
 SCALA   = 2.11
 
 ## container / stack identity
-URL    ?= registry.opensource.zalan.do/ie
+URL    ?= registry.opensource.zalan.do/poirot
 VSN    ?= $(shell test -z "`git status --porcelain`" && git describe --tags --long | sed -e 's/-g[0-9a-f]*//' | sed -e 's/-0//' || echo "`git describe --abbrev=0 --tags`-SNAPSHOT")
 
 ##

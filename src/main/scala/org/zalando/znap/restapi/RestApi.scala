@@ -203,7 +203,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
           case EntityReaderService.Entity(`key`, None) =>
             val contentType = MediaTypes.`application/json`
-            val responseString = s"""{"message": "Unknown key $targetId"}"""
+            val responseString = s"""{"message": "Unknown key $key"}"""
             HttpResponse(
               StatusCodes.NotFound,
               entity = HttpEntity(contentType, responseString)
