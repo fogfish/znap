@@ -50,20 +50,26 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
 
   override def receive: Receive = {
     case p @ PipelineFinished(id, partitionId, pipelineInstanceId) if sender() == self =>
+      log.error(s"Got $p, but pipelines should never finish, shutting down.")
+
       val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
+      log.debug(s"Pipeline ID $id, partition $partitionId, pipeline instance ID $pipelineInstanceId, " +
+        s"registered pipeline instance ID $registeredPipelineInstanceId")
       assert(registeredPipelineInstanceId == pipelineInstanceId)
 
-      log.error(s"Got $p, but pipelines should never finish, shutting down.")
       killSwitches.foreach { case (_, killSwitch) =>
         killSwitch.shutdown()
       }
       context.stop(self)
 
     case p @ PipelineFailed(id, partitionId, pipelineInstanceId, cause) if sender() == self =>
+      log.error(s"Pipeline $id for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
+
       val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
+      log.debug(s"Pipeline ID $id, partition $partitionId, pipeline instance ID $pipelineInstanceId, " +
+        s"registered pipeline instance ID $registeredPipelineInstanceId")
       assert(registeredPipelineInstanceId == pipelineInstanceId)
 
-      log.error(s"Pipeline $id for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
       val target = targets(id + partitionId)
       startPipeline(target)
   }
