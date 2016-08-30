@@ -31,8 +31,17 @@ artifact: compile package publish
 ## compile
 ##
 #####################################################################
-compile: scm-source.json
+compile:
 	@sbt -Dversion=${VSN} assembly
+
+#####################################################################
+##
+## package
+##
+#####################################################################
+package: Dockerfile scm-source.json
+	docker build ${DFLAGS} -t ${URL}/${TEAM}/${APP}:${VSN} -f $< .
+	docker tag ${URL}/${TEAM}/znap:${VSN} ${URLWRITE}/${TEAM}/znap:${VSN}
 
 scm-source.json: force
 	@sh -c '\
@@ -43,15 +52,6 @@ scm-source.json: force
 		echo "{\"url\": \"git:$$URL\", \"revision\": \"$$REV\", \"author\": \"$$USER\", \"status\": \"$$STATUS\"}" > scm-source.json'
 
 force:
-
-#####################################################################
-##
-## package
-##
-#####################################################################
-package: Dockerfile
-	docker build ${DFLAGS} -t ${URL}/${TEAM}/${APP}:${VSN} -f $< .
-	docker tag ${URL}/${TEAM}/znap:${VSN} ${URLWRITE}/${TEAM}/znap:${VSN}
 
 #####################################################################
 ##
