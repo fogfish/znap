@@ -10,8 +10,10 @@ APP     = znap
 SCALA   = 2.11
 
 ## container / stack identity
-URL    ?= registry.opensource.zalan.do/poirot
-VSN    ?= $(shell test -z "`git status --porcelain`" && git describe --tags --long | sed -e 's/-g[0-9a-f]*//' | sed -e 's/-0//' || echo "`git describe --abbrev=0 --tags`-SNAPSHOT")
+URL      ?= registry.opensource.zalan.do
+URLWRITE ?= registry-write.opensource.zalan.do
+TEAM     ?= poirot
+VSN      ?= $(shell test -z "`git status --porcelain`" && git describe --tags --long | sed -e 's/-g[0-9a-f]*//' | sed -e 's/-0//' || echo "`git describe --abbrev=0 --tags`-SNAPSHOT")
 
 ##
 ## docker image build flags
@@ -20,7 +22,9 @@ DFLAGS = \
    --build-arg VSN=${VSN}
 
 
-all: compile docker run
+all: compile package run
+
+artifact: compile package publish
 
 #####################################################################
 ##
@@ -28,7 +32,7 @@ all: compile docker run
 ##
 #####################################################################
 compile: scm-source.json
-	@sbt -Dversion=${VSN} assembly 
+	@sbt -Dversion=${VSN} assembly
 
 scm-source.json: force
 	@sh -c '\
@@ -38,16 +42,34 @@ scm-source.json: force
 		if [ -n "$$STATUS" ]; then REV="$$REV (locally modified)"; fi; \
 		echo "{\"url\": \"git:$$URL\", \"revision\": \"$$REV\", \"author\": \"$$USER\", \"status\": \"$$STATUS\"}" > scm-source.json'
 
+force:
+
 #####################################################################
 ##
 ## package
 ##
 #####################################################################
-docker:
-	docker build ${DFLAGS} -t ${URL}/${APP}:${VSN} .
+package: Dockerfile
+	docker build ${DFLAGS} -t ${URL}/${TEAM}/${APP}:${VSN} -f $< .
+	docker tag ${URL}/${TEAM}/znap:${VSN} ${URLWRITE}/${TEAM}/znap:${VSN}
 
-force:
+#####################################################################
+##
+## publish
+##
+#####################################################################
+publish:
+	@test -n "`git status --porcelain`" && \
+	  { echo "unable to publish mutable artifacts (container is built from dirty repority, commit you changes)"; exit 1; } || \
+	pierone login --url ${URLWRITE}
+	docker push ${URLWRITE}/${TEAM}/znap:${VSN}
 
+#####################################################################
+##
+## run project
+##
+#####################################################################
+run:
+	docker run -d -p 8080:8080 --net=host ${URL}/${TEAM}/${APP}:${VSN}
 
 .PHONY: compile
-
