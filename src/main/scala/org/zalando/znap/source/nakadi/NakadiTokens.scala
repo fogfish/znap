@@ -23,8 +23,10 @@ class NakadiTokens() extends OAuth {
   private val tokens = {
     Tokens.createAccessTokensWithUri(new URI(Config.Tokens.AccessToken))
       .tokenInfoUri(new URI(Config.Tokens.TokenInfo))
-      .manageToken("nakadi").addScope("uid").done()
-//      .manageToken("nakadi").addScope("nakadi.event_stream.read").done()
+      .manageToken("nakadi")
+        .addScope("uid")
+        .addScope("nakadi.event_stream.read")
+      .done()
       .start()
   }
 
