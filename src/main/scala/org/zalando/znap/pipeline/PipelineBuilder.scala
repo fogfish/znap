@@ -7,13 +7,14 @@
   */
 package org.zalando.znap.pipeline
 
+import java.util.UUID
+
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Flow, Keep, RunnableGraph, Sink, Source}
 import akka.stream.{ActorAttributes, KillSwitches, UniqueKillSwitch}
 import akka.{Done, NotUsed}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
-import com.amazonaws.services.kinesis.AmazonKinesisClient
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
 import org.zalando.znap.PartitionId
@@ -73,16 +74,14 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   /**
     * Build a pipeline in a form of Akka Streams graph.
     * @param id the pipeline ID.
-    * @param pipelineInstanceId the id for a particular instance of the pipeline.
     * @param snapshotTarget snapshot target to be handled by the pipeline.
     */
-  def build(id: String, pipelineInstanceId: String, snapshotTarget: SnapshotTarget): List[(String, RunnableGraph[(UniqueKillSwitch, Future[PipelineResult])])] = {
+  def build(id: String, snapshotTarget: SnapshotTarget): List[(String, Pipeline)] = {
     val offsetReader = buildOffsetReader(snapshotTarget)
     val sources = buildSource(snapshotTarget.source, offsetReader)
 
     sources.map { case (partitionId, source) =>
-      val withPartitionId = s"$id-partition$partitionId"
-      val withPartitionInstanceId = s"$pipelineInstanceId-partition$partitionId"
+      val pipelineUniqueId = UUID.randomUUID().toString
 
       val filterByEventClassStep = buildFilterByEventClassStep(snapshotTarget.source)
       val dataWriteStep = buildDataWriteStep(snapshotTarget)
@@ -99,16 +98,16 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         .via(offsetWriteStep)
         .viaMat(KillSwitches.single)(Keep.right)
         .toMat(sink)(Keep.both)
-        .named(s"Pipeline $id-$pipelineInstanceId-partition$partitionId")
+        .named(s"Pipeline $id-partition$partitionId (unique ID $pipelineUniqueId)")
 
         .mapMaterializedValue { case (killSwitch, f) =>
           implicit val ec = actorSystem.dispatcher
 
           val mappedFuture = f.map { case Done =>
-            PipelineFinished(id, partitionId, withPartitionInstanceId)
+            PipelineFinished(id, partitionId)
           }
             .recover {
-              case NonFatal(ex) => PipelineFailed(id, partitionId, withPartitionInstanceId, ex)
+              case NonFatal(ex) => PipelineFailed(id, partitionId, ex)
             }
           (killSwitch, mappedFuture)
         }
