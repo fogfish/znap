@@ -7,11 +7,10 @@
   */
 package org.zalando.znap.pipeline
 
-import java.util.UUID
-
 import akka.actor.{Actor, ActorLogging}
 import akka.stream.{ActorMaterializer, KillSwitch}
-import org.zalando.znap.config.{Config, SnapshotTarget}
+import org.zalando.znap.TargetId
+import org.zalando.znap.config.Config
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 
@@ -27,50 +26,58 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
   private val pipelineBuilder = new PipelineBuilder(tokens)(context.system)
 
   private val targets = Config.Targets.map(t => t.id -> t).toMap
+  private var pipelines = Map.empty[String, Pipeline]
+  private var runningPipelines = Set.empty[Pipeline]
   private var killSwitches = Map.empty[String, KillSwitch]
+
   override def preStart(): Unit = {
-    Config.Targets.foreach(startPipeline)
-  }
+    Config.Targets.foreach { snapshotTarget =>
+      val targetId = snapshotTarget.id
 
-  private var pipelineInstances = Map.empty[String, String]
-
-  private def startPipeline(snapshotTarget: SnapshotTarget): Unit = {
-    val id = snapshotTarget.id
-    val pipelineInstanceId = UUID.randomUUID().toString
-
-    pipelineBuilder.build(id, pipelineInstanceId, snapshotTarget).foreach {
-      case (partitionId, pipeline) =>
-        log.info(s"Pipeline $id for partition $partitionId started")
-        val (killSwitch, completionFuture) = pipeline.run()
-        killSwitches += (id + partitionId) -> killSwitch
-        pipelineInstances += (id + partitionId) -> pipelineInstanceId
-        completionFuture pipeTo self
+      pipelineBuilder.build(targetId, snapshotTarget).foreach {
+        case (partitionId, pipeline) =>
+          pipelines += (targetId + partitionId) -> pipeline
+          startPipeline(targetId, partitionId)
+      }
     }
   }
 
-  override def receive: Receive = {
-    case p @ PipelineFinished(id, partitionId, pipelineInstanceId) if sender() == self =>
-      log.error(s"Got $p, but pipelines should never finish, shutting down.")
+  private def startPipeline(targetId: TargetId, partitionId: String): Unit = {
+    val pipeline = pipelines(targetId + partitionId)
+    assertNotRunning(pipeline)
+    runningPipelines += pipeline
 
-      val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
-      log.debug(s"Pipeline ID $id, partition $partitionId, pipeline instance ID $pipelineInstanceId, " +
-        s"registered pipeline instance ID $registeredPipelineInstanceId")
-      assert(registeredPipelineInstanceId == pipelineInstanceId)
+    val (killSwitch, completionFuture) = pipeline.run()
+    killSwitches += (targetId + partitionId) -> killSwitch
+    completionFuture pipeTo self
+    log.info(s"Pipeline $targetId for partition $partitionId started")
+  }
+
+  override def receive: Receive = {
+    case p @ PipelineFinished(targetId, partitionId) =>
+      val pipeline = pipelines(targetId + partitionId)
+      assertRunning(pipeline)
+      runningPipelines -= pipeline
 
       killSwitches.foreach { case (_, killSwitch) =>
         killSwitch.shutdown()
       }
       context.stop(self)
 
-    case p @ PipelineFailed(id, partitionId, pipelineInstanceId, cause) if sender() == self =>
-      log.error(s"Pipeline $id for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
+    case p @ PipelineFailed(targetId, partitionId, cause) =>
+      log.error(s"Pipeline $targetId for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
 
-      val registeredPipelineInstanceId = pipelineInstances(id + partitionId)
-      log.debug(s"Pipeline ID $id, partition $partitionId, pipeline instance ID $pipelineInstanceId, " +
-        s"registered pipeline instance ID $registeredPipelineInstanceId")
-      assert(registeredPipelineInstanceId == pipelineInstanceId)
+      val pipeline = pipelines(targetId + partitionId)
+      assertRunning(pipeline)
+      runningPipelines -= pipeline
 
-      val target = targets(id + partitionId)
-      startPipeline(target)
+      startPipeline(targetId, partitionId)
+  }
+
+  private def assertRunning(pipeline: Pipeline): Unit = {
+    assert(runningPipelines.contains(pipeline))
+  }
+  private def assertNotRunning(pipeline: Pipeline): Unit = {
+    assert(!runningPipelines.contains(pipeline))
   }
 }
