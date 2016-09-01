@@ -49,6 +49,9 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     import scala.concurrent.duration._
     val waitDuration = 10.seconds
     val partitionsList = Await.result(partitionsListF, waitDuration)
+
+    logger.info(s"Got partitions for $nakadiSource: $partitionsList")
+
     val offsetsMap = Await.result(offsetsMapF, waitDuration)
 
     // Calculate offsets for each partition to start consuming from.

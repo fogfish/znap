@@ -10,25 +10,26 @@ package org.zalando.znap.pipeline
 import java.util.UUID
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Flow, Keep, RunnableGraph, Sink, Source}
-import akka.stream.{ActorAttributes, KillSwitches, UniqueKillSwitch}
+import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
+import akka.stream.{ActorAttributes, KillSwitches}
 import akka.{Done, NotUsed}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
+import org.slf4j.LoggerFactory
 import org.zalando.znap.PartitionId
 import org.zalando.znap.config._
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
+import org.zalando.znap.pipeline.PipelineBuilder.EventBatchCountLogger
 import org.zalando.znap.signalling.kinesis.KinesisSignaller
 import org.zalando.znap.signalling.sqs.SqsSignaller
 import org.zalando.znap.source.nakadi.objects.EventBatch
 import org.zalando.znap.source.nakadi.{NakadiPublisher, NakadiTokens}
 import org.zalando.znap.utils.{Compressor, Json}
 
-import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
@@ -88,8 +89,11 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       val signalStep = buildSignalStep(snapshotTarget)
       val offsetWriteStep = buildOffsetWriteStep(snapshotTarget)
 
-      val sink = Sink.ignore
-      //    val sink = Sink.foreach(println)
+//      val sink = Sink.ignore
+//      val sink = Sink.foreach(println)
+
+      val eventBatchCountLogger = new EventBatchCountLogger(id, partitionId)
+      val sink = Sink.foreach(eventBatchCountLogger.log)
 
       val graph = source
         .via(filterByEventClassStep)
@@ -268,5 +272,20 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
     }
       .addAttributes(dispatcherAttributes)
       .async
+  }
+}
+
+object PipelineBuilder {
+  private class EventBatchCountLogger(id: String, partitionId: String) {
+    private val logger = LoggerFactory.getLogger(classOf[EventBatchCountLogger])
+
+    private var counter = 0
+
+    def log(batch: EventBatch): Unit = {
+      counter += 1
+      if (counter % 200 == 0) {
+        logger.debug(s"Pipeline $id in partition $partitionId processed $counter batches")
+      }
+    }
   }
 }
