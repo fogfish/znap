@@ -55,6 +55,8 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
 
   override def receive: Receive = {
     case p @ PipelineFinished(targetId, partitionId) =>
+      log.error(s"Pipeline finishing is not expected, shutting down.")
+
       val pipeline = pipelines(targetId + partitionId)
       assertRunning(pipeline)
       runningPipelines -= pipeline
@@ -62,7 +64,7 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
       killSwitches.foreach { case (_, killSwitch) =>
         killSwitch.shutdown()
       }
-      context.stop(self)
+      throw new Exception("Pipeline finishing is not expected.")
 
     case p @ PipelineFailed(targetId, partitionId, cause) =>
       log.error(s"Pipeline $targetId for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
