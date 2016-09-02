@@ -34,7 +34,9 @@ import scala.util.control.NonFatal
 
 private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
-  private type FlowType = Flow[EventBatch, EventBatch, NotUsed]
+  import PipelineBuilder._
+
+  private type FlowType = Flow[(EventBatch, ProcessingContext), (EventBatch, ProcessingContext), NotUsed]
 
   private val Encoding = "UTF-8"
 
@@ -93,9 +95,13 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 //      val sink = Sink.foreach(println)
 
       val eventBatchCountLogger = new EventBatchCountLogger(id, partitionId)
-      val sink = Sink.foreach(eventBatchCountLogger.log)
+      val sink = Sink.foreach[(EventBatch, ProcessingContext)] {
+        case (batch, processingContext) =>
+          eventBatchCountLogger.log(batch, processingContext)
+      }
 
       val graph = source
+        .map(b => (b, ProcessingContext()))
         .via(filterByEventClassStep)
         .via(dataWriteStep)
         .via(signalStep)
@@ -151,11 +157,14 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   private def buildFilterByEventClassStep(source: SnapshotSource): FlowType = {
     source match {
       case nakadiSource: NakadiSource =>
-        Flow[EventBatch].map { eventBatch =>
+        Flow[(EventBatch, ProcessingContext)].map { case (eventBatch, processingContext) =>
+          val timeStart = getTime
           val filteredEvents = eventBatch.events.map { eventList =>
             eventList.filter(e => e.eventClass == nakadiSource.eventClass)
           }
-          EventBatch(eventBatch.cursor, filteredEvents)
+          val timeFinish = getTime
+          (EventBatch(eventBatch.cursor, filteredEvents),
+            processingContext.saveStageTime("filter", timeStart, timeFinish))
         }.async
 
       case EmptySource =>
@@ -164,15 +173,17 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   }
 
   private def buildDataWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (eventsWriter, dispatcherAttributes) = snapshotTarget.destination match {
+    val (eventsWriter, dispatcherAttributes, writerName) = snapshotTarget.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
         val uri = dynamoDBDestination.uri.toString
         (new DynamoDBEventsWriter(snapshotTarget, getDynamoDB(uri)),
-          ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher))
+          ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
+          "dynamo")
 
       case _: DiskDestination =>
         (new DiskEventsWriter(snapshotTarget),
-          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher))
+          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
+          "disk")
 
       case EmptyDestination =>
         throw new Exception("EmptyDestination is not supported")
@@ -180,9 +191,11 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
     eventsWriter.init()
 
-    Flow[EventBatch].map { batch =>
+    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val timeStart = getTime
       eventsWriter.write(batch.events.getOrElse(Nil))
-      batch
+      val timeFinish = getTime
+      (batch, processingContext.saveStageTime(s"write-$writerName", timeStart, timeFinish))
     }
       .addAttributes(dispatcherAttributes)
       .async
@@ -197,14 +210,15 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         buildKinesisSignalStep(kinesisSignalling, snapshotTarget.key)
 
       case None =>
-        Flow[EventBatch].map(x => x) // empty
+        Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
     }
   }
 
   private def buildSqsSignalStep(sqsSignalling: SqsSignalling, keyPath: List[String]): FlowType = {
     val signaller = new SqsSignaller(sqsSignalling, sqsClient)
 
-    Flow[EventBatch].map { batch =>
+    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val timeStart = getTime
       val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
         sqsSignalling.publishType match {
           case PublishType.KeysOnly =>
@@ -218,7 +232,8 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         }
       }
       signaller.signal(valuesToSignal)
-      batch
+      val timeFinish = getTime
+      (batch, processingContext.saveStageTime("signal-sqs", timeStart, timeFinish))
     }
       .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))
       .async
@@ -227,7 +242,8 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   private def buildKinesisSignalStep(kinesisSignalling: KinesisSignalling, keyPath: List[String]): FlowType = {
     val signaller = new KinesisSignaller(getKinesisProducer(kinesisSignalling.amazonRegion), kinesisSignalling.stream)
 
-    Flow[EventBatch].map { batch =>
+    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val timeStart = getTime
       val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
         val key = Json.getKey(keyPath, event.body)
         val value = kinesisSignalling.publishType match {
@@ -243,22 +259,25 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         (key, value)
       }
       signaller.signal(valuesToSignal)
-      batch
+      val timeFinish = getTime
+      (batch, processingContext.saveStageTime("signal-kinesis", timeStart, timeFinish))
     }
       .addAttributes(ActorAttributes.dispatcher(Config.Akka.KinesisDispatcher))
       .async
   }
 
   private def buildOffsetWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (offsetWriter, dispatcherAttributes) = snapshotTarget.destination match {
+    val (offsetWriter, dispatcherAttributes, writerName) = snapshotTarget.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
         val uri = dynamoDBDestination.uri.toString
         (new DynamoDBOffsetWriter(snapshotTarget, getDynamoDB(uri)),
-          ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher))
+          ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
+          "dynamo")
 
       case _: DiskDestination =>
         (new DiskOffsetWriter(snapshotTarget),
-          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher))
+          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
+          "disk")
 
       case EmptyDestination =>
         throw new Exception("EmptyDestination is not supported")
@@ -266,9 +285,11 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
     offsetWriter.init()
 
-    Flow[EventBatch].map { batch =>
+    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val timeStart = getTime
       offsetWriter.write(batch.cursor)
-      batch
+      val timeFinish = getTime
+      (batch, processingContext.saveStageTime(s"offset-$writerName", timeStart, timeFinish))
     }
       .addAttributes(dispatcherAttributes)
       .async
@@ -281,11 +302,40 @@ object PipelineBuilder {
 
     private var counter = 0
 
-    def log(batch: EventBatch): Unit = {
+    private var stageDurationSums = Map.empty[String, Long]
+
+    def log(batch: EventBatch, processingContext: ProcessingContext): Unit = {
+      processingContext.stageTimes.foreach {
+        case (stage, start, finish) =>
+          val duration = finish - start
+          val sum = stageDurationSums.getOrElse(stage, 0L) + duration
+          stageDurationSums += stage -> sum
+      }
+
+      val statisticsWindow = 200
       counter += 1
-      if (counter % 200 == 0) {
-        logger.debug(s"Pipeline $id in partition $partitionId processed $counter batches")
+      if (counter % statisticsWindow == 0) {
+        val averagePerStage = stageDurationSums.map { case (stage, sum) =>
+          s"$stage - ${sum / statisticsWindow}"
+        }.mkString(", ")
+        stageDurationSums = Map.empty
+
+        logger.debug(s"Pipeline $id in partition $partitionId processed $counter batches. Avg. durations: $averagePerStage")
       }
     }
+  }
+
+  private case class ProcessingContext(stageTimes: List[(String, Long, Long)]) {
+    def saveStageTime(stage: String, start: Long, finish: Long): ProcessingContext = {
+      this.copy(stageTimes = (stage, start, finish) :: stageTimes)
+    }
+  }
+
+  private object ProcessingContext {
+    def apply(): ProcessingContext = ProcessingContext(Nil)
+  }
+
+  private def getTime: Long = {
+    System.currentTimeMillis()
   }
 }
