@@ -20,11 +20,11 @@ class EntityReaderService(actorRoot: ActorRef) {
   import scala.concurrent.duration._
 
   def getEntity(targetId: TargetId, key: String)
-               (implicit actorSystem: ActorSystem): Future[Entity] = {
+               (implicit actorSystem: ActorSystem): Future[GetEntityCommandResult] = {
     implicit val ec = actorSystem.dispatcher
     getActor(actorSystem, targetId).flatMap { ref =>
       implicit val askTimeout = Timeout(10.seconds)
-      ref.ask(GetEntityCommand(key)).mapTo[Entity]
+      ref.ask(GetEntityCommand(key)).mapTo[GetEntityCommandResult]
     }
   }
 
@@ -38,6 +38,9 @@ class EntityReaderService(actorRoot: ActorRef) {
 }
 
 object EntityReaderService {
-  final case class Entity(key: String, value: Option[String])
   final case class GetEntityCommand(key: String)
+
+  trait GetEntityCommandResult
+  final case class Entity(key: String, value: Option[String]) extends GetEntityCommandResult
+  case object ProvisionedThroughputExceeded extends GetEntityCommandResult
 }
