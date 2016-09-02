@@ -28,9 +28,14 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with No
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
+      sender() ! get(key)
+  }
+
+  private def get(key: String): GetEntityCommandResult = {
+    try {
       val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
       if (item == null) {
-        sender() ! Entity(key, None)
+        Entity(key, None)
       } else {
         // Work with values based on theirs types.
         // String - not compressed value, Array[Byte] (binary) - compressed.
@@ -45,8 +50,15 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with No
             throw new Exception(s"Invalid type of value: ${valueClass.getName}")
           }
 
-        sender() ! Entity(key, Some(value))
+        Entity(key, Some(value))
       }
+    } catch {
+      case e: com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException =>
+        log.warning(s"${e.getMessage}, retrying in ")
+        ProvisionedThroughputExceeded
+      case e =>
+        throw e
+    }
   }
 }
 

@@ -208,6 +208,14 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
               StatusCodes.NotFound,
               entity = HttpEntity(contentType, responseString)
             )
+
+          case EntityReaderService.ProvisionedThroughputExceeded =>
+            val contentType = MediaTypes.`application/json`
+            val responseString = s"""{"message": "Provisioned throughput exceeded"}"""
+            HttpResponse(
+              StatusCodes.ServiceUnavailable,
+              entity = HttpEntity(contentType, responseString)
+            )
         }
         complete(result)
 

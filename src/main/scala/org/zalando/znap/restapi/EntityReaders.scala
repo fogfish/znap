@@ -32,10 +32,10 @@ class EntityReaders extends Actor with ActorLogging {
   }
 
   override def preStart(): Unit = {
-    Config.Targets.foreach(runEntityRead)
+    Config.Targets.foreach(runEntityReader)
   }
 
-  private def runEntityRead(target: SnapshotTarget): Unit = {
+  private def runEntityReader(target: SnapshotTarget): Unit = {
     val ref = target.destination match {
       case _: DynamoDBDestination =>
         val props = DynamoDBEntityReader.props(target)
