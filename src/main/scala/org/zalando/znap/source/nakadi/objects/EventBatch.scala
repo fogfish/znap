@@ -8,9 +8,10 @@
 package org.zalando.znap.source.nakadi.objects
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.JsonNode
 
 final case class EventBatch(@JsonProperty(value = "cursor", required = true)
                             cursor: Cursor,
 
                             @JsonProperty(value = "events")
-                            events: Option[List[NakadiEvent]])
+                            events: Option[List[JsonNode]])

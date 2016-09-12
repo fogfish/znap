@@ -7,9 +7,9 @@
   */
 package org.zalando.znap.persistence
 
-import org.zalando.znap.source.nakadi.objects.NakadiEvent
+import com.fasterxml.jackson.databind.JsonNode
 
 trait EventsWriterSync {
   def init(): Unit
-  def write(events: List[NakadiEvent]): Unit
+  def write(events: List[JsonNode]): Unit
 }
