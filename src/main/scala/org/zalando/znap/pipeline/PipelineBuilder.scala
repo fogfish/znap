@@ -160,7 +160,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         Flow[(EventBatch, ProcessingContext)].map { case (eventBatch, processingContext) =>
           val timeStart = getTime
           val filteredEvents = eventBatch.events.map { eventList =>
-            eventList.filter(e => e.eventClass == nakadiSource.eventClass)
+            eventList.filter(e => e.get("event_class").asText() == nakadiSource.eventClass)
           }
           val timeFinish = getTime
           (EventBatch(eventBatch.cursor, filteredEvents),
@@ -222,7 +222,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
         sqsSignalling.publishType match {
           case PublishType.KeysOnly =>
-            Json.getKey(keyPath, event.body)
+            Json.getKey(keyPath, event)
 
           case PublishType.EventsUncompressed =>
             Json.write(event)
@@ -245,7 +245,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
     Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
       val timeStart = getTime
       val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
-        val key = Json.getKey(keyPath, event.body)
+        val key = Json.getKey(keyPath, event)
         val value = kinesisSignalling.publishType match {
           case PublishType.KeysOnly =>
             key.getBytes(Encoding)
