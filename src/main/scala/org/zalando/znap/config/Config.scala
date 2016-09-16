@@ -132,8 +132,25 @@ object Config {
           }
 
           val eventType = sourceConfig.getString("event-type")
-          val eventClass = sourceConfig.getString("event-class")
-          NakadiSource(nakadiURI, eventType, eventClass)
+          val filter = Try(sourceConfig.getObject("filter")) match {
+            case Success(filterObject) =>
+              val filterConfig = filterObject.toConfig
+              if (filterConfig.entrySet().size() != 1) {
+                throw new Exception("Filter can contain only one field")
+              }
+
+              val entry = filterConfig.entrySet().head
+              val field = entry.getKey
+              val values = filterConfig.getStringList(field).toSet
+              Some(SourceFilter(field, values))
+
+            case Failure(_: ConfigException.Missing) =>
+              None
+
+            case Failure(ex) =>
+              throw ex
+          }
+          NakadiSource(nakadiURI, eventType, filter)
       }
     }
 

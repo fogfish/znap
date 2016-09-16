@@ -15,7 +15,10 @@ sealed trait SnapshotSource
 case object EmptySource extends SnapshotSource
 final case class NakadiSource(uri: URI,
                               eventType: String,
-                              eventClass: String) extends SnapshotSource
+                              filter: Option[SourceFilter]) extends SnapshotSource
+
+final case class SourceFilter(field: String,
+                              values: Set[String])
 
 
 sealed trait SnapshotDestination
