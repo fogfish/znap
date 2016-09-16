@@ -159,11 +159,19 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       case nakadiSource: NakadiSource =>
         Flow[(EventBatch, ProcessingContext)].map { case (eventBatch, processingContext) =>
           val timeStart = getTime
-          val filteredEvents = eventBatch.events.map { eventList =>
-            eventList.filter(e => e.get("event_class").asText() == nakadiSource.eventClass)
+          val filteredEventBatch = nakadiSource.filter match {
+            case Some(SourceFilter(filterField, filterValues)) =>
+              val filteredEvents = eventBatch.events.map { eventList =>
+                eventList.filter(e => filterValues.contains(e.get(filterField).asText()))
+              }
+              EventBatch(eventBatch.cursor, filteredEvents)
+
+            case _ =>
+              eventBatch
           }
           val timeFinish = getTime
-          (EventBatch(eventBatch.cursor, filteredEvents),
+
+          (filteredEventBatch,
             processingContext.saveStageTime("filter", timeStart, timeFinish))
         }.async
 
