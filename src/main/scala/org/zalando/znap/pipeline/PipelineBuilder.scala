@@ -275,15 +275,29 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
   }
 
   private def buildOffsetWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (offsetWriter, dispatcherAttributes, writerName) = snapshotTarget.destination match {
+    val (props, dispatcherAttributes, writerName) = snapshotTarget.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
         val uri = dynamoDBDestination.uri.toString
-        (new DynamoDBOffsetWriter(snapshotTarget, getDynamoDB(uri)),
+        val offsetWriter = new DynamoDBOffsetWriter(snapshotTarget, getDynamoDB(uri))
+        offsetWriter.init()
+
+        val props = OffsetWriterActor.props(
+          snapshotTarget, Config.Persistence.DynamoDB.OffsetWritePeriod, offsetWriter)
+          .withDispatcher(Config.Akka.DynamoDBDispatcher)
+
+        (props,
           ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
           "dynamo")
 
       case _: DiskDestination =>
-        (new DiskOffsetWriter(snapshotTarget),
+        val offsetWriter = new DiskOffsetWriter(snapshotTarget)
+        offsetWriter.init()
+
+        val props = OffsetWriterActor.props(
+          snapshotTarget, Config.Persistence.Disk.OffsetWritePeriod, offsetWriter)
+          .withDispatcher(Config.Akka.DiskDBDispatcher)
+
+        (props,
           ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
           "disk")
 
@@ -291,16 +305,14 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         throw new Exception("EmptyDestination is not supported")
     }
 
-    offsetWriter.init()
-
-    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
-      val timeStart = getTime
-      offsetWriter.write(batch.cursor)
-      val timeFinish = getTime
-      (batch, processingContext.saveStageTime(s"offset-$writerName", timeStart, timeFinish))
-    }
+    val branch = Flow[(EventBatch, ProcessingContext)]
+      .map { case (eventBatch, _) => eventBatch.cursor }
+      .to(Sink.actorSubscriber(props))
       .addAttributes(dispatcherAttributes)
       .async
+
+    Flow[(EventBatch, ProcessingContext)]
+      .alsoTo(branch)
   }
 }
 
@@ -311,13 +323,24 @@ object PipelineBuilder {
     private var counter = 0
 
     private var stageDurationSums = Map.empty[String, Long]
+    private var previousWriteDynamoFinished: Option[Long] = None
 
     def log(batch: EventBatch, processingContext: ProcessingContext): Unit = {
       processingContext.stageTimes.foreach {
-        case (stage, start, finish) =>
+        case (stage, start, finish) if stage == "write-dynamo" =>
           val duration = finish - start
           val sum = stageDurationSums.getOrElse(stage, 0L) + duration
           stageDurationSums += stage -> sum
+
+          if (previousWriteDynamoFinished.nonEmpty) {
+            val betweenStage = "between-two-write-dynamo"
+            val duration = start - previousWriteDynamoFinished.get
+            val sum = stageDurationSums.getOrElse(betweenStage, 0L) + duration
+            stageDurationSums += betweenStage -> sum
+          }
+          previousWriteDynamoFinished = Some(finish)
+
+        case _ =>
       }
 
       val statisticsWindow = 200

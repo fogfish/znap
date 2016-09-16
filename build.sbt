@@ -12,11 +12,11 @@ scalacOptions ++= Seq(
 
 libraryDependencies ++= {
   Seq(
-    "com.typesafe.akka" %% "akka-actor" % "2.4.9",
-    "com.typesafe.akka" %% "akka-stream" % "2.4.9",
-    "com.typesafe.akka" %% "akka-http-core" % "2.4.9",
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.9",
-    "com.typesafe.akka" %% "akka-slf4j" % "2.4.9",
+    "com.typesafe.akka" %% "akka-actor" % "2.4.10",
+    "com.typesafe.akka" %% "akka-stream" % "2.4.10",
+    "com.typesafe.akka" %% "akka-http-core" % "2.4.10",
+    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.10",
+    "com.typesafe.akka" %% "akka-slf4j" % "2.4.10",
 
     "ch.qos.logback" % "logback-classic" % "1.1.7",
 
