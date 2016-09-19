@@ -7,9 +7,12 @@
   */
 package org.zalando.znap.restapi
 
+import java.util
+
 import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
-import com.amazonaws.services.dynamodbv2.document.DynamoDB
+import com.amazonaws.services.dynamodbv2.document.{DynamoDB, GetItemOutcome}
+import com.amazonaws.services.dynamodbv2.model.AttributeValue
 import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
@@ -33,7 +36,14 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with No
 
   private def get(key: String): GetEntityCommandResult = {
     try {
-      val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
+      val attributes = new util.HashMap[String, AttributeValue]()
+      attributes.put(Config.DynamoDB.KVTables.Attributes.Key, new AttributeValue(key))
+      val consistentRead = true
+      val result = client.getItem(dynamoDBDestination.tableName, attributes, consistentRead)
+      val outcome = new GetItemOutcome(result)
+      val item = outcome.getItem
+//      val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
+
       if (item == null) {
         Entity(key, None)
       } else {
