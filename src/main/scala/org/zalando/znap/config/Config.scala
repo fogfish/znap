@@ -83,6 +83,27 @@ object Config {
         val WorkingDirectory = appConfig.getString("persistence.disk.workingDirectory")
         val SnapshotsDirectory = appConfig.getString("persistence.disk.snapshotsDirectory")
       }
+
+      val OffsetWritePeriod = readOffsetWritePeriod(appConfig, "persistence.disk.offset-write-period")
+    }
+
+    object DynamoDB {
+      val OffsetWritePeriod = readOffsetWritePeriod(appConfig, "persistence.dynamodb.offset-write-period")
+    }
+  }
+
+  private def readOffsetWritePeriod(appConfig: TypesafeConfig, path: String): Option[FiniteDuration] = {
+    try {
+      val t = appConfig.getDuration(path)
+      Some(FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS))
+    } catch {
+      case _: ConfigException.BadValue =>
+        val v = appConfig.getString(path)
+        if (v == "sync") {
+          None
+        } else {
+          throw new Exception(s"Offset write period at $path can be a duration or 'sync'.")
+        }
     }
   }
 
