@@ -11,23 +11,18 @@ import java.util
 
 import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
-import com.amazonaws.services.dynamodbv2.document.{DynamoDB, GetItemOutcome}
+import com.amazonaws.services.dynamodbv2.document.GetItemOutcome
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
+import org.zalando.znap.config.{Config, DynamoDBDestination}
 import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with NoUnexpectedMessages with ActorLogging {
+class DynamoDBEntityReader(client: AmazonDynamoDBClient,
+                           dynamoDBDestination: DynamoDBDestination) extends Actor with NoUnexpectedMessages with ActorLogging {
   import EntityReaderService._
 
-  private val dynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
-
-  private val client = new AmazonDynamoDBClient()
-  client.withEndpoint(dynamoDBDestination.uri.toString)
-
-  private val dynamoDB = new DynamoDB(client)
-
-  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
+//  private val dynamoDB = new DynamoDB(client)
+//  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
@@ -73,7 +68,7 @@ class DynamoDBEntityReader(snapshotTarget: SnapshotTarget) extends Actor with No
 }
 
 object DynamoDBEntityReader {
-  def props(snapshotTarget: SnapshotTarget): Props = {
-    Props(classOf[DynamoDBEntityReader], snapshotTarget)
+  def props(client: AmazonDynamoDBClient, dynamoDBDestination: DynamoDBDestination): Props = {
+    Props(classOf[DynamoDBEntityReader], client, dynamoDBDestination)
   }
 }

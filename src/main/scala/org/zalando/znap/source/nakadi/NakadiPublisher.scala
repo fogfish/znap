@@ -1,6 +1,7 @@
 package org.zalando.znap.source.nakadi
 
 import java.time.ZonedDateTime
+import java.util.concurrent.TimeoutException
 
 import akka.NotUsed
 import akka.actor.ActorSystem
@@ -47,8 +48,14 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     // and staying with Future would complicate it badly,
     // so we'll just block and wait for the results.
     import scala.concurrent.duration._
-    val waitDuration = 10.seconds
-    val partitionsList = Await.result(partitionsListF, waitDuration)
+    val waitDuration = 15.seconds
+    val partitionsList = try {
+      Await.result(partitionsListF, waitDuration)
+    } catch {
+      case e: TimeoutException =>
+        logger.error(s"Couldn't get partitions in $waitDuration.")
+        throw e
+    }
 
     logger.info(s"Got partitions for $nakadiSource: $partitionsList")
 
