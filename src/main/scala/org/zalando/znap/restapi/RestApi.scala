@@ -185,7 +185,6 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   private def getSnapshotEntity(targetId: TargetId, key: String): StandardRoute = {
     import scala.language.postfixOps
 
-    implicit val timeout: Timeout = 30.seconds
     targets.get(targetId) match {
       case Some(target) =>
         val result = entityReaderService.getEntity(targetId, key).map {
@@ -203,6 +202,14 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
           case EntityReaderService.ProvisionedThroughputExceeded =>
             val contentType = MediaTypes.`application/json`
             val responseString = s"""{"message": "Provisioned throughput exceeded"}"""
+            HttpResponse(
+              StatusCodes.ServiceUnavailable,
+              entity = HttpEntity(contentType, responseString)
+            )
+        }.recover {
+          case e: akka.pattern.AskTimeoutException =>
+            val contentType = MediaTypes.`application/json`
+            val responseString = s"""{"message": "Request took too long. Retry later"}"""
             HttpResponse(
               StatusCodes.ServiceUnavailable,
               entity = HttpEntity(contentType, responseString)
