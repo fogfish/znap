@@ -7,13 +7,12 @@ import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.StandardRoute
 import akka.stream.ActorMaterializer
-import akka.util.{ByteString, Timeout}
+import akka.util.Timeout
 import org.zalando.znap._
 import org.zalando.znap.config.Config
 import org.zalando.znap.dumps.DumpManager
-import org.zalando.znap.service.{DumpKeysService, SnapshotService}
+import org.zalando.znap.service.{DumpKeysService, EntityReaderService}
 import org.zalando.znap.utils.Json
-import org.zalando.znap.service.EntityReaderService
 
 import scala.concurrent.Future
 
@@ -37,18 +36,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       }
     }
 
-    // Get a whole snapshot.
-    val routeGetSnapshot =
-    path("snapshots" / Segment) {
-      (targetId: TargetId) => {
-        get {
-          encodeResponseWith(Gzip) {
-            getSnapshot(targetId)
-          }
-        }
-      }
-    }
-
+    // Start dumping of a snapshot.
     val routeStartDump =
       path("snapshots" / Segment / "dump") {
         (targetId: TargetId) => {
@@ -57,6 +45,17 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
           }
         }
       }
+
+    // Get the snapshot dumping status.
+    val routeGetDumpStatus =
+      path("dumps" / Segment) {
+        (dumpUid: String) => {
+          get {
+            getDumpStatus(dumpUid)
+          }
+        }
+      }
+
 
     // Get an entity from a snapshot.
     val routeGetSnapshotEntity =
@@ -70,25 +69,17 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       }
     }
 
-    val routeGetDumpStatus =
-      path("dumps" / Segment) {
-        (dumpUid: String) => {
-          get {
-            getDumpStatus(dumpUid)
-          }
-        }
-      }
 
+    // Health check.
     val routeHealthCheck =
-      path("health" / "ping") {
-        get {
-          complete("ok")
-        }
+    path("health" / "ping") {
+      get {
+        complete("ok")
       }
+    }
 
     routeGetSnapshotList ~
       routeGetSnapshotEntity ~
-      routeGetSnapshot ~
       routeStartDump ~
       routeGetDumpStatus ~
       routeHealthCheck
@@ -224,25 +215,6 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     }
   }
 
-  private def getSnapshot(targetId: TargetId): StandardRoute = {
-    targets.get(targetId) match {
-      case Some(target) =>
-        val keySource = SnapshotService
-          .getSnapshotKeys(target)
-          .map(serializeKey)
-
-        val contentType = MediaTypes.`text/plain`.withCharset(HttpCharsets.`UTF-8`)
-        val response = HttpResponse(entity = HttpEntity(contentType, keySource))
-        complete(response)
-
-      case None =>
-        complete {
-          HttpResponse(StatusCodes.NotFound, entity = HttpEntity(s"Unknown target $targetId"))
-        }
-    }
-  }
-
-
   private def unknownTargetResponse(targetId: TargetId): HttpResponse = {
     val contentType = MediaTypes.`application/json`
     val responseString = s"""{"message": "Unknown target $targetId"}"""
@@ -250,16 +222,6 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       StatusCodes.NotFound,
       entity = HttpEntity(contentType, responseString)
     )
-  }
-
-  private val encoding  = "UTF-8"
-  private val newLineBS = "\n".getBytes(encoding)
-  private def serializeKey(key: String): ByteString = {
-    val builder = ByteString.newBuilder
-    builder.sizeHint((key.length * 1.5).toInt)
-    builder.putBytes(key.getBytes(encoding))
-    builder.putBytes(newLineBS)
-    builder.result()
   }
 
   private var http: Future[Http.ServerBinding] = _

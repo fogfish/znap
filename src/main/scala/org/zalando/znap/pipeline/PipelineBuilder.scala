@@ -23,7 +23,6 @@ import org.zalando.znap.config._
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
-import org.zalando.znap.pipeline.PipelineBuilder.EventBatchCountLogger
 import org.zalando.znap.signalling.kinesis.KinesisSignaller
 import org.zalando.znap.signalling.sqs.SqsSignaller
 import org.zalando.znap.source.nakadi.objects.EventBatch
@@ -327,10 +326,11 @@ object PipelineBuilder {
 
     def log(batch: EventBatch, processingContext: ProcessingContext): Unit = {
       processingContext.stageTimes.foreach {
-        case (stage, start, finish) if stage == "write-dynamo" =>
+        case (stage, start, finish) if stage == "write-dynamo" || stage == "signal-sqs" =>
           val duration = finish - start
           val sum = stageDurationSums.getOrElse(stage, 0L) + duration
           stageDurationSums += stage -> sum
+
 
           if (previousWriteDynamoFinished.nonEmpty) {
             val betweenStage = "between-two-write-dynamo"
