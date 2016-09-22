@@ -45,24 +45,23 @@ class DumpTracker {
     dumpUids.get(target)
   }
 
+  def getRunner(dumpUID: DumpUID): ActorRef = {
+    dumpActors(dumpUID)
+  }
+
   def dumpFinishedSuccessfully(dumpRunner: ActorRef): DumpUID = {
-    dumpActorsReverse.get(dumpRunner) match {
-      case Some(uid) =>
-        val target = dumpUidsReverse(uid)
+    finishWithStatus(dumpRunner, DumpFinishedSuccefully)
+  }
 
-        dumpUids -= target
-        dumpUidsReverse -= uid
-        dumpActors -= uid
-        dumpActorsReverse -= dumpRunner
-        dumpStatuses += uid -> DumpFinishedSuccefully
-        uid
-
-      case _ =>
-        throw new IllegalStateException(s"Unknown runner $dumpRunner")
-    }
+  def dumpAborted(dumpRunner: ActorRef): DumpUID = {
+    finishWithStatus(dumpRunner, DumpAborted)
   }
 
   def dumpFailed(dumpRunner: ActorRef, message: String): DumpUID = {
+    finishWithStatus(dumpRunner, DumpFailed(message))
+  }
+
+  def finishWithStatus(dumpRunner: ActorRef, status: DumpStatus): DumpUID = {
     dumpActorsReverse.get(dumpRunner) match {
       case Some(uid) =>
         val target = dumpUidsReverse(uid)
@@ -71,7 +70,7 @@ class DumpTracker {
         dumpUidsReverse -= uid
         dumpActors -= uid
         dumpActorsReverse -= dumpRunner
-        dumpStatuses += uid -> DumpFailed(message)
+        dumpStatuses += uid -> status
         uid
 
       case _ =>
