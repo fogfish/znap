@@ -20,8 +20,8 @@ libraryDependencies ++= {
 
     "ch.qos.logback" % "logback-classic" % "1.1.7",
 
-    "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.7.4",
-    "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.7.4",
+    "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.7.7",
+    "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % "2.7.7",
 //    "com.typesafe.scala-logging" %% "scala-logging" % "3.1.0",
 
     "org.zalando" % "scarl_2.11" % "0.1.4",
@@ -34,14 +34,14 @@ libraryDependencies ++= {
 //    "org.slf4j" % "slf4j-simple" % "1.7.21",
     "org.apache.httpcomponents" % "httpclient" % "4.5.2",
 
-    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.26",
-    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.26",
-    "com.amazonaws" % "aws-java-sdk-sqs" % "1.11.26",
+    "com.amazonaws" % "aws-java-sdk-dynamodb" % "1.11.35",
+    "com.amazonaws" % "aws-java-sdk-s3" % "1.11.35",
+    "com.amazonaws" % "aws-java-sdk-sqs" % "1.11.35",
     "com.amazonaws" % "aws-java-sdk-kinesis" % "1.11.26",
-    "com.amazonaws" % "amazon-kinesis-producer" % "0.10.2",
+    "com.amazonaws" % "amazon-kinesis-producer" % "0.12.0",
 
     "org.apache.commons" % "commons-compress" % "1.12",
 
-    "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+    "org.scalatest" %% "scalatest" % "3.0.0" % "test"
   )
 }

@@ -3,21 +3,20 @@ package org.zalando.znap.restapi
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Gzip
-import akka.http.scaladsl.model._
+import akka.http.scaladsl.model.{HttpEntity, _}
 import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.StandardRoute
+import akka.http.scaladsl.server.{Directive0, Route, StandardRoute}
 import akka.stream.ActorMaterializer
-import akka.util.Timeout
 import org.zalando.znap._
 import org.zalando.znap.config.Config
 import org.zalando.znap.dumps.DumpManager
-import org.zalando.znap.service.{DumpKeysService, EntityReaderService}
+import org.zalando.znap.service.{DumpKeysService, EntityReaderService, MetricsService}
 import org.zalando.znap.utils.Json
 
 import scala.concurrent.Future
 
 class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
-  import scala.concurrent.duration._
+  import RestApi._
 
   private implicit val system = actorSystem
   private implicit val materializer = ActorMaterializer()
@@ -26,6 +25,8 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   private val entityReaderService = new EntityReaderService(actorRoot)
 
   private val targets = Config.Targets.map(t => t.id -> t).toMap
+
+  private val measureLatency = new MeasureLatencyDirective
 
   private val routes = {
     // List of all available snapshots.
@@ -59,11 +60,14 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
     // Get an entity from a snapshot.
     val routeGetSnapshotEntity =
-    path("snapshots" / Segment / "entities" / Segment) {
-      (targetId: TargetId, key: String) => {
-        get {
-          encodeResponseWith(Gzip) {
-            getSnapshotEntity(targetId, key)
+//    new LatencyMeasureDirective {
+    measureLatency {
+      path("snapshots" / Segment / "entities" / Segment) {
+        (targetId: TargetId, key: String) => {
+          get {
+            encodeResponseWith(Gzip) {
+              getSnapshotEntity(targetId, key)
+            }
           }
         }
       }
@@ -239,5 +243,31 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
   def stop(): Unit = {
     http.foreach(_.unbind())
+  }
+}
+
+object RestApi {
+
+  /**
+    * Directive for measuring latencies of HTTP queries
+    * and sending them to [[MetricsService]].
+    */
+  class MeasureLatencyDirective()(implicit actorSystem: ActorSystem) extends Directive0 {
+    private implicit val executionContext = actorSystem.dispatcher
+
+    override def tapply(f: (Unit) => Route): Route = {
+      ctx => {
+        val started = System.nanoTime()
+        f()(ctx).map { result =>
+          val duration = (System.nanoTime() - started) / 1000000
+//          if (duration < 10) {
+//            println(ctx.request)
+//            println(result)
+//          }
+          MetricsService.sendGetEntityLatency(duration)
+          result
+        }
+      }
+    }
   }
 }
