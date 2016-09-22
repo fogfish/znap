@@ -14,7 +14,7 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.GetItemOutcome
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
 import org.zalando.znap.config.{Config, DynamoDBDestination}
-import org.zalando.znap.service.EntityReaderService
+import org.zalando.znap.service.{EntityReaderService, MetricsService}
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
 class DynamoDBEntityReader(client: AmazonDynamoDBClient,
@@ -34,7 +34,12 @@ class DynamoDBEntityReader(client: AmazonDynamoDBClient,
       val attributes = new util.HashMap[String, AttributeValue]()
       attributes.put(Config.DynamoDB.KVTables.Attributes.Key, new AttributeValue(key))
       val consistentRead = true
+
+      val start = System.nanoTime()
       val result = client.getItem(dynamoDBDestination.tableName, attributes, consistentRead)
+      val duration = (System.nanoTime() - start) / 1000000
+      MetricsService.sendGetEntityFromDynamoLatency(duration)(context.system)
+
       val outcome = new GetItemOutcome(result)
       val item = outcome.getItem
 //      val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
