@@ -13,6 +13,8 @@ ARG  VSN=
 COPY target/scala-${SCALA}/${APP}-assembly-${VSN}.jar /${APP}.jar
 COPY scm-source.json /scm-source.json
 
+RUN curl -o /jolokia.jar https://repo1.maven.org/maven2/org/jolokia/jolokia-jvm/1.3.4/jolokia-jvm-1.3.4-agent.jar
+
 ENV  JAVA_OPTS="\
    -server \
    -XX:+UseNUMA \
@@ -26,4 +28,6 @@ ENV  JAVA_OPTS="\
 
 EXPOSE 8080
 
-ENTRYPOINT java ${JAVA_OPTS} -Dconfig.resource=/application.conf -jar $APP.jar
+ENTRYPOINT java ${JAVA_OPTS} -Dconfig.resource=/application.conf \
+           -javaagent:/jolokia.jar=port=8778,host=0.0.0.0 \
+           -jar $APP.jar
