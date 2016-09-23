@@ -17,11 +17,10 @@ RUN curl -o /jolokia.jar https://repo1.maven.org/maven2/org/jolokia/jolokia-jvm/
 
 ENV  JAVA_OPTS="\
    -server \
-   -XX:+UseNUMA \
    -XX:+UseCondCardMark \
    -XX:-UseBiasedLocking \
    -Xms1024M \
-   -Xmx1024M \
+   -Xmx3072M \
    -Xss1M \
    -XX:MaxPermSize=128m \
    -XX:+UseParallelGC"
