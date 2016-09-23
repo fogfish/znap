@@ -17,6 +17,7 @@ class MetricsCollector extends Actor with ActorLogging {
 
   private val tickInterval = FiniteDuration(10, scala.concurrent.duration.SECONDS)
 
+  private var requestCount = 0L
   private val getEntityLatencies = ArrayBuffer.empty[Long]
   private val getEntityFromDynamoLatencies = ArrayBuffer.empty[Long]
 
@@ -31,12 +32,17 @@ class MetricsCollector extends Actor with ActorLogging {
     case GetEntityLatency(latency) =>
 //      println(s"Get $latency")
       getEntityLatencies.append(latency)
+      requestCount += 1
 
     case GetEntityFromDynamoLatency(latency) =>
 //      println(s"Dyn $latency")
       getEntityFromDynamoLatencies.append(latency)
 
     case Tick =>
+      val rps = requestCount.toDouble / tickInterval.toSeconds
+      log.info(s"Get entity reqs. in last $tickInterval: $requestCount, approx. RPS: ${f"$rps%1.2f"}")
+      requestCount = 0L
+
       printToLog("Get entity latency (REST)", getEntityLatencies)
       getEntityLatencies.clear()
 
