@@ -14,5 +14,6 @@ package object dumps {
   case object UnknownDump extends DumpStatus
   case object DumpRunning extends DumpStatus
   case object DumpFinishedSuccefully extends DumpStatus
+  case object DumpAborted extends DumpStatus
   final case class DumpFailed(errorMessage: String) extends DumpStatus
 }

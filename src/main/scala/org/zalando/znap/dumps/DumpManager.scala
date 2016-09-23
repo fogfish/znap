@@ -34,8 +34,8 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
   }
 
   override def receive: Receive = {
-    case DumpCommand(target) =>
-      val result = startDump(target)
+    case DumpCommand(target, forceRestart) =>
+      val result = startDump(target, forceRestart)
       log.info(s"Received dump command for target ${target.id}, result: $result")
       sender() ! result
 
@@ -48,28 +48,43 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
       log.info(s"Dump $dumpUid finished successfully")
   }
 
-  private def startDump(target: SnapshotTarget): DumpCommandResult = {
+  private def startDump(target: SnapshotTarget,
+                        forceRestart: Boolean): DumpCommandResult = {
     dumpTracker.getDumpUidIfRunning(target) match {
-      case Some(dumpUID) =>
+      case Some(dumpUID) if !forceRestart =>
         AnotherDumpAlreadyRunning(dumpUID)
 
+      case Some(oldDumpUid) if forceRestart =>
+        val oldDumpRunner = dumpTracker.getRunner(oldDumpUid)
+        oldDumpRunner ! SqsDumpRunner.AbortDump
+
+        val oldDumpUid1 = dumpTracker.dumpAborted(oldDumpRunner)
+        assert(oldDumpUid == oldDumpUid1)
+        log.info(s"Dump $oldDumpUid aborted")
+
+        startNewDump(target)
+
       case None =>
-        val uid = s"${target.id}-${UUID.randomUUID().toString}"
+        startNewDump(target)
+    }
+  }
 
-        val dumpRunnerProps = target.dumping.map {
-          case _: SqsDumping =>
-            Props(classOf[SqsDumpRunner], tokens, target)
-        }
+  private def startNewDump(target: SnapshotTarget): DumpCommandResult = {
+    val uid = s"${target.id}-${UUID.randomUUID().toString}"
 
-        dumpRunnerProps match {
-          case Some(p) =>
-            val dumpRunner = context.actorOf(p)
-            dumpTracker.dumpStarted(target, uid, dumpRunner)
-            DumpStarted(uid)
+    val dumpRunnerProps = target.dumping.map {
+      case _: SqsDumping =>
+        Props(classOf[SqsDumpRunner], tokens, target)
+    }
 
-          case None =>
-            DumpingNotConfigured
-        }
+    dumpRunnerProps match {
+      case Some(p) =>
+        val dumpRunner = context.actorOf(p)
+        dumpTracker.dumpStarted(target, uid, dumpRunner)
+        DumpStarted(uid)
+
+      case None =>
+        DumpingNotConfigured
     }
   }
 
@@ -82,7 +97,8 @@ object DumpManager {
 
   val name = "dump-manager"
 
-  final case class DumpCommand(snapshotTarget: SnapshotTarget)
+  final case class DumpCommand(snapshotTarget: SnapshotTarget,
+                               forceRestart: Boolean)
   sealed trait DumpCommandResult
   final case class DumpStarted(dumpUid: DumpUID) extends DumpCommandResult
   final case class AnotherDumpAlreadyRunning(dumpUid: DumpUID) extends DumpCommandResult

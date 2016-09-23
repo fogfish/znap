@@ -42,7 +42,9 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       path("snapshots" / Segment / "dump") {
         (targetId: TargetId) => {
           post {
-            startDump(targetId)
+            parameter('force_restart ? false) { forceRestart =>
+              startDump(targetId, forceRestart)
+            }
           }
         }
       }
@@ -97,10 +99,10 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     complete(response)
   }
 
-  private def startDump(targetId: TargetId): StandardRoute = {
+  private def startDump(targetId: TargetId, forceRestart: Boolean): StandardRoute = {
     targets.get(targetId) match {
       case Some(target) =>
-        val result = DumpKeysService.dump(target).map {
+        val result = DumpKeysService.dump(target, forceRestart).map {
           case DumpManager.DumpStarted(dumpUid) =>
             val responseString = Json.createObject("dumpUid" -> dumpUid)
               .toString
@@ -156,6 +158,17 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         val responseString = Json.createObject(
           "status" -> "FINISHED_SUCCESSFULLY",
           "message" -> s"Dump finished successfully"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dumps.DumpAborted =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> "ABORTED",
+          "message" -> s"Dump aborted"
         ).toString
         HttpResponse(
           StatusCodes.OK,
