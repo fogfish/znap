@@ -51,7 +51,7 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
     (target.id, getPartitionsFunc, getOffsetFunc)
   }
 
-  private val tickInterval = FiniteDuration(1, scala.concurrent.duration.SECONDS)
+  private val tickInterval = FiniteDuration(1, scala.concurrent.duration.MINUTES)
 
   override def preStart(): Unit = {
     scheduleTick()
@@ -78,8 +78,6 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
             val start = partition.oldestAvailableOffset.toLong
             val end = partition.newestAvailableOffset.toLong
 
-            print(s"$id ${partition.partition}")
-
             offsets.get(partition.partition) match {
               case Some(offset) =>
                 val offsetNum = offset.toLong
@@ -97,17 +95,17 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
                       positionRaw
                     }
 
-                  val msg = s"$id [" +
+                  val msg = s"$id ${partition.partition} [" +
                     "." * position +
                     "*" +
                     ("." * (progressBarSize - position - 1)) +
                     s"] $start-_${offsetNum}_-$end"
                   log.info(msg)
                 } else {
-                  log.error(s"In $id, the current offset is $offsetNum, available offsets are $start - $end.")
+                  log.error(s"In $id ${partition.partition}, the current offset is $offsetNum, available offsets are $start - $end.")
                 }
               case _ =>
-                val msg = s"$id [..................................................] $start-__-$end"
+                val msg = s"$id ${partition.partition} [..................................................] $start-__-$end"
                 log.info(msg)
             }
           }
