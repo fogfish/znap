@@ -12,7 +12,7 @@ import akka.actor.{Actor, ActorLogging, Props}
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.FiniteDuration
 
-class MetricsCollector extends Actor with ActorLogging {
+class MetricsCollector extends Actor with ActorLogging with Instrumented {
   import MetricsCollector._
 
   private val tickInterval = FiniteDuration(10, scala.concurrent.duration.SECONDS)
@@ -20,6 +20,8 @@ class MetricsCollector extends Actor with ActorLogging {
   private var requestCount = 0L
   private val getEntityLatencies = ArrayBuffer.empty[Long]
   private val getEntityFromDynamoLatencies = ArrayBuffer.empty[Long]
+
+  private val rpsMeter = metrics.meter("entity-reqs")
 
   override def preStart(): Unit = {
     implicit val ec = context.system.dispatcher
@@ -33,6 +35,7 @@ class MetricsCollector extends Actor with ActorLogging {
 //      println(s"Get $latency")
       getEntityLatencies.append(latency)
       requestCount += 1
+      rpsMeter.mark()
 
     case GetEntityFromDynamoLatency(latency) =>
 //      println(s"Dyn $latency")

@@ -16,7 +16,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 class DynamoDBOffsetReader(snapshotTarget: SnapshotTarget,
                            dynamoDB: DynamoDB)
-                          (executionContext: ExecutionContext)extends OffsetReaderSync {
+                          (executionContext: ExecutionContext) extends OffsetReaderSync {
   import collection.JavaConverters._
 
   private implicit val ec = executionContext

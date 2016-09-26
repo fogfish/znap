@@ -42,6 +42,8 @@ libraryDependencies ++= {
 
     "org.apache.commons" % "commons-compress" % "1.12",
 
+    "nl.grons" %% "metrics-scala" % "3.5.5_a2.3",
+
     "org.scalatest" %% "scalatest" % "3.0.0" % "test"
   )
 }

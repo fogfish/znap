@@ -17,9 +17,11 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
+import nl.grons.metrics.scala.Meter
 import org.slf4j.LoggerFactory
-import org.zalando.znap.PartitionId
+import org.zalando.znap.{PartitionId, TargetId}
 import org.zalando.znap.config._
+import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
@@ -31,7 +33,7 @@ import org.zalando.znap.utils.{Compressor, Json}
 
 import scala.util.control.NonFatal
 
-private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
+private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) extends Instrumented {
 
   import PipelineBuilder._
 
@@ -73,6 +75,29 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
     }
   }
 
+  private var batchProcessingFinishedMeters = Map.empty[String, Meter]
+  private def getBatchProcessingFinishedMeter(targetId: TargetId): Meter = {
+    batchProcessingFinishedMeters.get(targetId) match {
+      case Some(meter) =>
+        meter
+      case _ =>
+        val meter = metrics.meter(s"batches-processed-$targetId")
+        batchProcessingFinishedMeters += targetId -> meter
+        meter
+    }
+  }
+  private var eventProcessingFinishedMeters = Map.empty[String, Meter]
+  private def getEventProcessingFinishedMeter(targetId: TargetId): Meter = {
+    eventProcessingFinishedMeters.get(targetId) match {
+      case Some(meter) =>
+        meter
+      case _ =>
+        val meter = metrics.meter(s"events-processed-$targetId")
+        eventProcessingFinishedMeters += targetId -> meter
+        meter
+    }
+  }
+
   /**
     * Build a pipeline in a form of Akka Streams graph.
     * @param id the pipeline ID.
@@ -89,6 +114,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
       val dataWriteStep = buildDataWriteStep(snapshotTarget)
       val signalStep = buildSignalStep(snapshotTarget)
       val offsetWriteStep = buildOffsetWriteStep(snapshotTarget)
+      val metricsStep = buildMetricsStep(snapshotTarget)
 
 //      val sink = Sink.ignore
 //      val sink = Sink.foreach(println)
@@ -105,6 +131,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
         .via(dataWriteStep)
         .via(signalStep)
         .via(offsetWriteStep)
+        .via(metricsStep)
         .viaMat(KillSwitches.single)(Keep.right)
         .toMat(sink)(Keep.both)
         .named(s"Pipeline $id-partition$partitionId (unique ID $pipelineUniqueId)")
@@ -312,6 +339,16 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) {
 
     Flow[(EventBatch, ProcessingContext)]
       .alsoTo(branch)
+  }
+
+  private def buildMetricsStep(snapshotTarget: SnapshotTarget): FlowType = {
+    val batchProcessingFinishedMeter = getBatchProcessingFinishedMeter(snapshotTarget.id)
+    val eventProcessingFinishedMeter = getEventProcessingFinishedMeter(snapshotTarget.id)
+    Flow[(EventBatch, ProcessingContext)].map { case r @ (batch, _) =>
+      batchProcessingFinishedMeter.mark()
+      eventProcessingFinishedMeter.mark(batch.events.size)
+      r
+    }
   }
 }
 
