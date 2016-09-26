@@ -99,13 +99,13 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
                     "." * position +
                     "*" +
                     ("." * (progressBarSize - position - 1)) +
-                    s"] $start-_${offsetNum}_-$end"
+                    s"] $start - $offsetNum - $end"
                   log.info(msg)
                 } else {
                   log.error(s"In $id ${partition.partition}, the current offset is $offsetNum, available offsets are $start - $end.")
                 }
               case _ =>
-                val msg = s"$id ${partition.partition} [..................................................] $start-__-$end"
+                val msg = s"$id ${partition.partition} [..................................................] $start - __ - $end"
                 log.info(msg)
             }
           }
