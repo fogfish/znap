@@ -83,25 +83,29 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
             offsets.get(partition.partition) match {
               case Some(offset) =>
                 val offsetNum = offset.toLong
-                val length = end - start
-                val progress = offsetNum - start
-                val positionRaw = ((progressBarSize * progress.toDouble) / length).toInt
-                val position =
-                  if (positionRaw < 0) {
-                    0
-                  } else if (positionRaw > (progressBarSize - 1)) {
-                    progressBarSize - 1
-                  } else {
-                    positionRaw
-                  }
 
-                val msg = "[" +
-                  "." * position +
-                  "*" +
-                  ("." * (progressBarSize - position - 1)) +
-                  s"] $start-_${offsetNum}_-$end"
-                log.info(msg)
+                if (offsetNum >= start && offsetNum <= end) {
+                  val length = end - start
+                  val progress = offsetNum - start
+                  val positionRaw = ((progressBarSize * progress.toDouble) / length).toInt
+                  val position =
+                    if (positionRaw < 0) {
+                      0
+                    } else if (positionRaw > (progressBarSize - 1)) {
+                      progressBarSize - 1
+                    } else {
+                      positionRaw
+                    }
 
+                  val msg = "[" +
+                    "." * position +
+                    "*" +
+                    ("." * (progressBarSize - position - 1)) +
+                    s"] $start-_${offsetNum}_-$end"
+                  log.info(msg)
+                } else {
+                  log.error(s"In $id, the current offset is $offsetNum, available offsets are $start - $end.")
+                }
               case _ =>
                 val msg = s"[..................................................] $start-__-$end"
                 log.info(msg)
