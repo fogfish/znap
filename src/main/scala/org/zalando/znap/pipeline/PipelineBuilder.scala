@@ -368,8 +368,7 @@ object PipelineBuilder {
           val sum = stageDurationSums.getOrElse(stage, 0L) + duration
           stageDurationSums += stage -> sum
 
-
-          if (previousWriteDynamoFinished.nonEmpty) {
+          if (previousWriteDynamoFinished.nonEmpty && stage == "write-dynamo") {
             val betweenStage = "between-two-write-dynamo"
             val duration = start - previousWriteDynamoFinished.get
             val sum = stageDurationSums.getOrElse(betweenStage, 0L) + duration

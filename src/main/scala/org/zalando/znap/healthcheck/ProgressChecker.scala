@@ -97,7 +97,7 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
                       positionRaw
                     }
 
-                  val msg = "[" +
+                  val msg = s"$id [" +
                     "." * position +
                     "*" +
                     ("." * (progressBarSize - position - 1)) +
@@ -107,7 +107,7 @@ class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
                   log.error(s"In $id, the current offset is $offsetNum, available offsets are $start - $end.")
                 }
               case _ =>
-                val msg = s"[..................................................] $start-__-$end"
+                val msg = s"$id [..................................................] $start-__-$end"
                 log.info(msg)
             }
           }
