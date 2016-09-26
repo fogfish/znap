@@ -21,10 +21,7 @@ class MetricsCollector extends Actor with ActorLogging with Instrumented {
   private val getEntityLatencies = ArrayBuffer.empty[Long]
   private val getEntityFromDynamoLatencies = ArrayBuffer.empty[Long]
 
-  @volatile private var rpsLast = 0.0
-  metrics.gauge("entity-reqs-per-sec") {
-    rpsLast
-  }
+  private val rpsMeter = metrics.meter("entity-reqs")
 
   override def preStart(): Unit = {
     implicit val ec = context.system.dispatcher
@@ -38,6 +35,7 @@ class MetricsCollector extends Actor with ActorLogging with Instrumented {
 //      println(s"Get $latency")
       getEntityLatencies.append(latency)
       requestCount += 1
+      rpsMeter.mark()
 
     case GetEntityFromDynamoLatency(latency) =>
 //      println(s"Dyn $latency")
@@ -45,7 +43,6 @@ class MetricsCollector extends Actor with ActorLogging with Instrumented {
 
     case Tick =>
       val rps = requestCount.toDouble / tickInterval.toSeconds
-      rpsLast = rps
       log.info(s"Get entity reqs. in last $tickInterval: $requestCount, approx. RPS: ${f"$rps%1.2f"}")
       requestCount = 0L
 

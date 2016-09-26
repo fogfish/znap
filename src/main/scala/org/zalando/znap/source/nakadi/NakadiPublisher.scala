@@ -34,13 +34,14 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   private implicit val materializer = ActorMaterializer(ActorMaterializerSettings(actorSystem))
   private val http = Http(actorSystem)
   private implicit val executionContext = actorSystem.dispatcher
+  private val partitionGetter = new NakadiPartitionGetter(nakadiSource, tokens)
 
   /**
     * Create a stream source for each partition.
     */
   def createSources(): List[(PartitionId, Source[EventBatch, NotUsed])] = {
     // Get existing partitions from Nakadi.
-    val partitionsListF = getPartitions
+    val partitionsListF = partitionGetter.getPartitions
     // Get saved offsets.
     val offsetsMapF = offsetReader.getLastOffsets
 
@@ -107,35 +108,6 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     createSourceForPartition0(partition, Some(offset))
       .recoverWithRetries(-1, recoveryStrategy)
     .async
-  }
-
-  /**
-    * Get partitions list from Nakadi.
-    */
-  private def getPartitions: Future[List[Partition]] = {
-    // Request partitions of the topic.
-    val scheme = nakadiSource.uri.getScheme
-    val hostAndPort = nakadiSource.uri.getAuthority
-    val uri = s"$scheme://$hostAndPort/event-types/${nakadiSource.eventType}/partitions"
-    val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
-    val request = HttpRequest(
-      uri = uri,
-      headers = List(authorizationHeader))
-
-    http.singleRequest(request).flatMap {
-      case HttpResponse(StatusCodes.OK, _, entity, _) =>
-        entity.dataBytes.collectAsObject[List[NakadiPartition]].map { nakadiPartitions =>
-          val partitions = nakadiPartitions.map { np =>
-            Partition(np.partition, np.oldestAvailableOffset, np.newestAvailableOffset)
-          }
-          partitions
-        }
-
-      case unknownResponse: HttpResponse =>
-        unknownResponse.entity.dataBytes.collectAsString().map { content =>
-          throw new Exception(s"Error response on getting partitions, ${unknownResponse.status} $content")
-        }
-    }
   }
 
   /**

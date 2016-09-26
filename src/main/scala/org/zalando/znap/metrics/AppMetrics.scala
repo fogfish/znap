@@ -7,13 +7,22 @@
   */
 package org.zalando.znap.metrics
 
-import com.codahale.metrics.JmxReporter
+import java.util.concurrent.TimeUnit
+
+import com.codahale.metrics.{Slf4jReporter, JmxReporter}
 
 object AppMetrics {
   val metricRegistry = new com.codahale.metrics.MetricRegistry()
 
-  val reporter = JmxReporter
-    .forRegistry(metricRegistry)
+  val reporter = JmxReporter.forRegistry(metricRegistry)
+    .convertRatesTo(TimeUnit.SECONDS)
+    .convertDurationsTo(TimeUnit.MILLISECONDS)
     .build()
   reporter.start()
+
+  val logReporter = Slf4jReporter.forRegistry(metricRegistry)
+    .convertRatesTo(TimeUnit.SECONDS)
+    .convertDurationsTo(TimeUnit.MILLISECONDS)
+    .build()
+  logReporter.start(1, TimeUnit.MINUTES)
 }
