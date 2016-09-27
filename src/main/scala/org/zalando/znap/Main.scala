@@ -14,7 +14,6 @@ import org.zalando.scarl.{RootSupervisor, ScarlSupervisor}
 import org.zalando.znap.config._
 import org.zalando.znap.dumps.DumpManager
 import org.zalando.znap.healthcheck.ProgressChecker
-import org.zalando.znap.metrics.MetricsCollector
 import org.zalando.znap.pipeline.PipelineManager
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.restapi.Httpd
@@ -44,7 +43,6 @@ object Main extends App {
   }
 
   actorSystem.actorOf(ProgressChecker.props(tokens), ProgressChecker.name)
-  actorSystem.actorOf(MetricsCollector.props(), MetricsCollector.name)
 
   actorSystem.rootSupervisor(
     Specs(SubSystemsSupervisor.name, SubSystemsSupervisor.props())

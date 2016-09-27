@@ -1,5 +1,7 @@
 package org.zalando.znap.restapi
 
+import java.util.concurrent.ConcurrentHashMap
+
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Gzip
@@ -10,7 +12,8 @@ import akka.stream.ActorMaterializer
 import org.zalando.znap._
 import org.zalando.znap.config.Config
 import org.zalando.znap.dumps.DumpManager
-import org.zalando.znap.service.{DumpKeysService, EntityReaderService, MetricsService}
+import org.zalando.znap.metrics.Instrumented
+import org.zalando.znap.service.{DumpKeysService, EntityReaderService}
 import org.zalando.znap.utils.Json
 
 import scala.concurrent.Future
@@ -26,7 +29,9 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
   private val targets = Config.Targets.map(t => t.id -> t).toMap
 
-  private val measureLatency = new MeasureLatencyDirective
+  private val measureLatencyDirectives = Config.Targets.map { t =>
+    t.id -> new MeasureLatencyDirective(t.id)(actorSystem)
+  }.toMap
 
   private val routes = {
     // List of all available snapshots.
@@ -62,10 +67,9 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
     // Get an entity from a snapshot.
     val routeGetSnapshotEntity =
-//    new LatencyMeasureDirective {
-    measureLatency {
-      path("snapshots" / Segment / "entities" / Segment) {
-        (targetId: TargetId, key: String) => {
+    path("snapshots" / Segment / "entities" / Segment) {
+      (targetId: TargetId, key: String) => {
+        measureLatencyDirectives(targetId) {
           get {
             encodeResponseWith(Gzip) {
               getSnapshotEntity(targetId, key)
@@ -263,21 +267,20 @@ object RestApi {
 
   /**
     * Directive for measuring latencies of HTTP queries
-    * and sending them to [[MetricsService]].
+    * and sending them to Dropwizard.
     */
-  class MeasureLatencyDirective()(implicit actorSystem: ActorSystem) extends Directive0 {
+  class MeasureLatencyDirective(targetId: TargetId)
+                               (implicit actorSystem: ActorSystem) extends Directive0 with Instrumented {
     private implicit val executionContext = actorSystem.dispatcher
+
+    private val timer = metrics.timer(s"get-entity-rest-$targetId")
 
     override def tapply(f: (Unit) => Route): Route = {
       ctx => {
+        val timerCtx = timer.timerContext()
         val started = System.nanoTime()
         f()(ctx).map { result =>
-          val duration = (System.nanoTime() - started) / 1000000
-//          if (duration < 10) {
-//            println(ctx.request)
-//            println(result)
-//          }
-          MetricsService.sendGetEntityLatency(duration)
+          timerCtx.stop()
           result
         }
       }
