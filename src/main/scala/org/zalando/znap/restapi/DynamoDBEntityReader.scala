@@ -13,16 +13,21 @@ import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.GetItemOutcome
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
+import org.zalando.znap.TargetId
 import org.zalando.znap.config.{Config, DynamoDBDestination}
-import org.zalando.znap.service.{EntityReaderService, MetricsService}
+import org.zalando.znap.metrics.Instrumented
+import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class DynamoDBEntityReader(client: AmazonDynamoDBClient,
-                           dynamoDBDestination: DynamoDBDestination) extends Actor with NoUnexpectedMessages with ActorLogging {
+class DynamoDBEntityReader(targetId: TargetId,
+                           client: AmazonDynamoDBClient,
+                           dynamoDBDestination: DynamoDBDestination) extends Actor with NoUnexpectedMessages with ActorLogging with Instrumented {
   import EntityReaderService._
 
 //  private val dynamoDB = new DynamoDB(client)
 //  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
+
+  private val timer = metrics.timer(s"get-entity-dynamo-$targetId")
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
@@ -35,10 +40,9 @@ class DynamoDBEntityReader(client: AmazonDynamoDBClient,
       attributes.put(Config.DynamoDB.KVTables.Attributes.Key, new AttributeValue(key))
       val consistentRead = true
 
-      val start = System.nanoTime()
-      val result = client.getItem(dynamoDBDestination.tableName, attributes, consistentRead)
-      val duration = (System.nanoTime() - start) / 1000000
-      MetricsService.sendGetEntityFromDynamoLatency(duration)(context.system)
+      val result = timer.time {
+        client.getItem(dynamoDBDestination.tableName, attributes, consistentRead)
+      }
 
       val outcome = new GetItemOutcome(result)
       val item = outcome.getItem
@@ -73,7 +77,7 @@ class DynamoDBEntityReader(client: AmazonDynamoDBClient,
 }
 
 object DynamoDBEntityReader {
-  def props(client: AmazonDynamoDBClient, dynamoDBDestination: DynamoDBDestination): Props = {
-    Props(classOf[DynamoDBEntityReader], client, dynamoDBDestination)
+  def props(targetId: TargetId, client: AmazonDynamoDBClient, dynamoDBDestination: DynamoDBDestination): Props = {
+    Props(classOf[DynamoDBEntityReader], targetId, client, dynamoDBDestination)
   }
 }

@@ -34,7 +34,7 @@ class TargetEntityReader(snapshotTarget: SnapshotTarget) extends Actor with NoUn
 
   override def receive: Receive = {
     case c: GetEntityCommand =>
-      val props = DynamoDBEntityReader.props(client, dynamoDBDestination)
+      val props = DynamoDBEntityReader.props(snapshotTarget.id, client, dynamoDBDestination)
         .withDispatcher(Config.Akka.DynamoDBDispatcher)
       val reader = context.actorOf(props)
       reader.forward(c)
