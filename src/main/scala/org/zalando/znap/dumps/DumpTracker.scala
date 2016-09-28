@@ -8,11 +8,11 @@
 package org.zalando.znap.dumps
 
 import akka.actor.ActorRef
-import org.zalando.znap.config.SnapshotTarget
+import org.zalando.znap.config.SnapshotPipeline
 
 class DumpTracker {
-  private var dumpUids = Map.empty[SnapshotTarget, DumpUID]
-  private var dumpUidsReverse = Map.empty[DumpUID, SnapshotTarget]
+  private var dumpUids = Map.empty[SnapshotPipeline, DumpUID]
+  private var dumpUidsReverse = Map.empty[DumpUID, SnapshotPipeline]
   private var dumpActors = Map.empty[DumpUID, ActorRef]
   private var dumpActorsReverse = Map.empty[ActorRef, DumpUID]
   private var dumpStatuses = Map.empty[DumpUID, DumpStatus]
@@ -21,9 +21,9 @@ class DumpTracker {
     dumpStatuses.getOrElse(dumpUID, UnknownDump)
   }
 
-  def dumpStarted(target: SnapshotTarget, dumpUID: DumpUID, dumpRunner: ActorRef): Unit = {
-    if (dumpUids.contains(target)) {
-      throw new IllegalStateException(s"A dump for this target is already running")
+  def dumpStarted(pipeline: SnapshotPipeline, dumpUID: DumpUID, dumpRunner: ActorRef): Unit = {
+    if (dumpUids.contains(pipeline)) {
+      throw new IllegalStateException(s"A dump for this pipeline is already running")
     } else if (dumpActorsReverse.contains(dumpRunner)) {
       throw new IllegalStateException(s"A dump with this runner is already running")
     } else if (dumpUidsReverse.contains(dumpUID)) {
@@ -33,16 +33,16 @@ class DumpTracker {
     } else {
       assert(!dumpActors.contains(dumpUID))
 
-      dumpUids += target -> dumpUID
-      dumpUidsReverse += dumpUID -> target
+      dumpUids += pipeline -> dumpUID
+      dumpUidsReverse += dumpUID -> pipeline
       dumpActors += dumpUID -> dumpRunner
       dumpActorsReverse += dumpRunner -> dumpUID
       dumpStatuses += dumpUID -> DumpRunning
     }
   }
 
-  def getDumpUidIfRunning(target: SnapshotTarget): Option[DumpUID] = {
-    dumpUids.get(target)
+  def getDumpUidIfRunning(pipeline: SnapshotPipeline): Option[DumpUID] = {
+    dumpUids.get(pipeline)
   }
 
   def getRunner(dumpUID: DumpUID): ActorRef = {
@@ -64,9 +64,9 @@ class DumpTracker {
   def finishWithStatus(dumpRunner: ActorRef, status: DumpStatus): DumpUID = {
     dumpActorsReverse.get(dumpRunner) match {
       case Some(uid) =>
-        val target = dumpUidsReverse(uid)
+        val pipeline = dumpUidsReverse(uid)
 
-        dumpUids -= target
+        dumpUids -= pipeline
         dumpUidsReverse -= uid
         dumpActors -= uid
         dumpActorsReverse -= dumpRunner

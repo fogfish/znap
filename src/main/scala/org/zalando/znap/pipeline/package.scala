@@ -13,5 +13,5 @@ import akka.stream.scaladsl.RunnableGraph
 import scala.concurrent.Future
 
 package object pipeline {
-  type Pipeline = RunnableGraph[(UniqueKillSwitch, Future[PipelineResult])]
+  type RunnablePipeline = RunnableGraph[(UniqueKillSwitch, Future[PipelineResult])]
 }

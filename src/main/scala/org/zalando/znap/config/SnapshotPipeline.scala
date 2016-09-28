@@ -9,7 +9,7 @@ package org.zalando.znap.config
 
 import java.net.URI
 
-import org.zalando.znap.TargetId
+import org.zalando.znap.PipelineId
 
 sealed trait SnapshotSource
 case object EmptySource extends SnapshotSource
@@ -25,7 +25,6 @@ sealed trait SnapshotDestination
 case object EmptyDestination extends SnapshotDestination
 final case class DynamoDBDestination(uri: URI,
                                      tableName: String) extends SnapshotDestination
-final case class DiskDestination() extends SnapshotDestination
 
 
 sealed trait Signalling
@@ -56,11 +55,11 @@ object PublishType {
 }
 
 
-final case class SnapshotTarget(id: TargetId,
-                                source: SnapshotSource,
-                                destination: SnapshotDestination,
-                                signalling: Option[Signalling],
-                                dumping: Option[Dumping],
-                                offsetPersistence: OffsetPersistence,
-                                key: List[String],
-                                compress: Boolean)
+final case class SnapshotPipeline(id: PipelineId,
+                                  source: SnapshotSource,
+                                  destination: SnapshotDestination,
+                                  signalling: Option[Signalling],
+                                  dumping: Option[Dumping],
+                                  offsetPersistence: OffsetPersistence,
+                                  key: List[String],
+                                  compress: Boolean)

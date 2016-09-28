@@ -10,14 +10,14 @@ package org.zalando.znap.restapi
 import akka.actor.SupervisorStrategy.{Escalate, Restart}
 import akka.actor.{Actor, ActorLogging, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
 import org.zalando.znap._
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotPipeline}
 import org.zalando.znap.utils.ThrowableUtils
 
 import scala.util.control.NonFatal
 
 class EntityReaders extends Actor with ActorLogging {
 
-  private var entityReaders = Map.empty[TargetId, ActorRef]
+  private var entityReaders = Map.empty[PipelineId, ActorRef]
 
   private def entityReaderSet: Set[ActorRef] = {
     entityReaders.values.toSet
@@ -32,16 +32,16 @@ class EntityReaders extends Actor with ActorLogging {
   }
 
   override def preStart(): Unit = {
-    Config.Targets.foreach(runTargetEntityReader)
+    Config.Pipelines.foreach(runPipelineEntityReader)
   }
 
-  private def runTargetEntityReader(target: SnapshotTarget): Unit = {
-    val ref = target.destination match {
+  private def runPipelineEntityReader(pipeline: SnapshotPipeline): Unit = {
+    val ref = pipeline.destination match {
       case _: DynamoDBDestination =>
-        val props = TargetEntityReader.props(target)
-        context.actorOf(props, target.id)
+        val props = PipelineEntityReader.props(pipeline)
+        context.actorOf(props, pipeline.id)
     }
-    entityReaders += target.id -> ref
+    entityReaders += pipeline.id -> ref
   }
 
   override def receive: Receive = {

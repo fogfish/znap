@@ -19,19 +19,19 @@ class EntityReaderService(actorRoot: ActorRef) {
   import akka.pattern.ask
   import scala.concurrent.duration._
 
-  def getEntity(targetId: TargetId, key: String)
+  def getEntity(pipelineId: PipelineId, key: String)
                (implicit actorSystem: ActorSystem): Future[GetEntityCommandResult] = {
     implicit val ec = actorSystem.dispatcher
-    getActor(actorSystem, targetId).flatMap { ref =>
+    getActor(actorSystem, pipelineId).flatMap { ref =>
       implicit val askTimeout = Timeout(10.seconds)
       ref.ask(GetEntityCommand(key)).mapTo[GetEntityCommandResult]
     }
   }
 
-  private def getActor(actorSystem: ActorSystem, targetId: TargetId): Future[ActorRef] = {
+  private def getActor(actorSystem: ActorSystem, pipelineId: PipelineId): Future[ActorRef] = {
     implicit val resolveTimeout = 10.seconds
     val entityReaderSelection = actorSystem.actorSelection(
-      actorRoot.path / EntityReaders.name / targetId
+      actorRoot.path / EntityReaders.name / pipelineId
     )
     entityReaderSelection.resolveOne(resolveTimeout)
   }

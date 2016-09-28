@@ -19,11 +19,10 @@ import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducer
 import com.amazonaws.services.sqs.AmazonSQSClient
 import nl.grons.metrics.scala.Meter
 import org.slf4j.LoggerFactory
-import org.zalando.znap.{PartitionId, TargetId}
+import org.zalando.znap.{PartitionId, PipelineId}
 import org.zalando.znap.config._
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.persistence.OffsetReaderSync
-import org.zalando.znap.persistence.disk.{DiskEventsWriter, DiskOffsetReader, DiskOffsetWriter}
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
 import org.zalando.znap.signalling.kinesis.KinesisSignaller
 import org.zalando.znap.signalling.sqs.SqsSignaller
@@ -41,7 +40,6 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
 
   private val Encoding = "UTF-8"
 
-  private lazy val diskExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
   private lazy val dynamoExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
 //  private lazy val sqsExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.SqsDispatcher)
 
@@ -76,24 +74,24 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   }
 
   private var batchProcessingFinishedMeters = Map.empty[String, Meter]
-  private def getBatchProcessingFinishedMeter(targetId: TargetId): Meter = {
-    batchProcessingFinishedMeters.get(targetId) match {
+  private def getBatchProcessingFinishedMeter(pipelineId: PipelineId): Meter = {
+    batchProcessingFinishedMeters.get(pipelineId) match {
       case Some(meter) =>
         meter
       case _ =>
-        val meter = metrics.meter(s"batches-processed-$targetId")
-        batchProcessingFinishedMeters += targetId -> meter
+        val meter = metrics.meter(s"batches-processed-$pipelineId")
+        batchProcessingFinishedMeters += pipelineId -> meter
         meter
     }
   }
   private var eventProcessingFinishedMeters = Map.empty[String, Meter]
-  private def getEventProcessingFinishedMeter(targetId: TargetId): Meter = {
-    eventProcessingFinishedMeters.get(targetId) match {
+  private def getEventProcessingFinishedMeter(pipelineId: PipelineId): Meter = {
+    eventProcessingFinishedMeters.get(pipelineId) match {
       case Some(meter) =>
         meter
       case _ =>
-        val meter = metrics.meter(s"events-processed-$targetId")
-        eventProcessingFinishedMeters += targetId -> meter
+        val meter = metrics.meter(s"events-processed-$pipelineId")
+        eventProcessingFinishedMeters += pipelineId -> meter
         meter
     }
   }
@@ -101,20 +99,20 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   /**
     * Build a pipeline in a form of Akka Streams graph.
     * @param id the pipeline ID.
-    * @param snapshotTarget snapshot target to be handled by the pipeline.
+    * @param snapshotPipeline snapshot pipeline configuration.
     */
-  def build(id: String, snapshotTarget: SnapshotTarget): List[(String, Pipeline)] = {
-    val offsetReader = buildOffsetReader(snapshotTarget)
-    val sources = buildSource(snapshotTarget.source, offsetReader)
+  def build(id: String, snapshotPipeline: SnapshotPipeline): List[(String, RunnablePipeline)] = {
+    val offsetReader = buildOffsetReader(snapshotPipeline)
+    val sources = buildSource(snapshotPipeline.source, offsetReader)
 
     sources.map { case (partitionId, source) =>
       val pipelineUniqueId = UUID.randomUUID().toString
 
-      val filterByEventClassStep = buildFilterByEventClassStep(snapshotTarget.source)
-      val dataWriteStep = buildDataWriteStep(snapshotTarget)
-      val signalStep = buildSignalStep(snapshotTarget)
-      val offsetWriteStep = buildOffsetWriteStep(snapshotTarget)
-      val metricsStep = buildMetricsStep(snapshotTarget)
+      val filterByEventClassStep = buildFilterByEventClassStep(snapshotPipeline.source)
+      val dataWriteStep = buildDataWriteStep(snapshotPipeline)
+      val signalStep = buildSignalStep(snapshotPipeline)
+      val offsetWriteStep = buildOffsetWriteStep(snapshotPipeline)
+      val metricsStep = buildMetricsStep(snapshotPipeline)
 
 //      val sink = Sink.ignore
 //      val sink = Sink.foreach(println)
@@ -152,8 +150,8 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     }
   }
 
-  private def buildOffsetReader(snapshotTarget: SnapshotTarget): OffsetReaderSync = {
-    val offsetReader = snapshotTarget.offsetPersistence match {
+  private def buildOffsetReader(snapshotPipeline: SnapshotPipeline): OffsetReaderSync = {
+    val offsetReader = snapshotPipeline.offsetPersistence match {
       case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val uri = dynamoDBOffsetPersistence.uri.toString
         new DynamoDBOffsetReader(dynamoDBOffsetPersistence, getDynamoDB(uri))(dynamoExecutionContext)
@@ -203,18 +201,13 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     }
   }
 
-  private def buildDataWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (eventsWriter, dispatcherAttributes, writerName) = snapshotTarget.destination match {
+  private def buildDataWriteStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    val (eventsWriter, dispatcherAttributes, writerName) = snapshotPipeline.destination match {
       case dynamoDBDestination: DynamoDBDestination =>
         val uri = dynamoDBDestination.uri.toString
-        (new DynamoDBEventsWriter(snapshotTarget, getDynamoDB(uri)),
+        (new DynamoDBEventsWriter(snapshotPipeline, getDynamoDB(uri)),
           ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
           "dynamo")
-
-      case _: DiskDestination =>
-        (new DiskEventsWriter(snapshotTarget),
-          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
-          "disk")
 
       case EmptyDestination =>
         throw new Exception("EmptyDestination is not supported")
@@ -232,13 +225,13 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       .async
   }
 
-  private def buildSignalStep(snapshotTarget: SnapshotTarget): FlowType = {
-    snapshotTarget.signalling match {
+  private def buildSignalStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    snapshotPipeline.signalling match {
       case Some(sqsSignalling: SqsSignalling) =>
-        buildSqsSignalStep(sqsSignalling, snapshotTarget.key)
+        buildSqsSignalStep(sqsSignalling, snapshotPipeline.key)
 
       case Some(kinesisSignalling: KinesisSignalling) =>
-        buildKinesisSignalStep(kinesisSignalling, snapshotTarget.key)
+        buildKinesisSignalStep(kinesisSignalling, snapshotPipeline.key)
 
       case None =>
         Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
@@ -297,32 +290,20 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       .async
   }
 
-  private def buildOffsetWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (props, dispatcherAttributes, writerName) = snapshotTarget.offsetPersistence match {
+  private def buildOffsetWriteStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    val (props, dispatcherAttributes, writerName) = snapshotPipeline.offsetPersistence match {
       case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val uri = dynamoDBOffsetPersistence.uri.toString
         val offsetWriter = new DynamoDBOffsetWriter(dynamoDBOffsetPersistence, getDynamoDB(uri))
         offsetWriter.init()
 
         val props = OffsetWriterActor.props(
-          snapshotTarget, Config.Persistence.DynamoDB.OffsetWritePeriod, offsetWriter)
+          snapshotPipeline, Config.Persistence.DynamoDB.OffsetWritePeriod, offsetWriter)
           .withDispatcher(Config.Akka.DynamoDBDispatcher)
 
         (props,
           ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
           "dynamo")
-
-//      case _: DiskDestination =>
-//        val offsetWriter = new DiskOffsetWriter(snapshotTarget)
-//        offsetWriter.init()
-//
-//        val props = OffsetWriterActor.props(
-//          snapshotTarget, Config.Persistence.Disk.OffsetWritePeriod, offsetWriter)
-//          .withDispatcher(Config.Akka.DiskDBDispatcher)
-//
-//        (props,
-//          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
-//          "disk")
 
       case EmptyOffsetPersistence =>
         throw new Exception("EmptyOffsetPersistence is not supported")
@@ -338,9 +319,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       .alsoTo(branch)
   }
 
-  private def buildMetricsStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val batchProcessingFinishedMeter = getBatchProcessingFinishedMeter(snapshotTarget.id)
-    val eventProcessingFinishedMeter = getEventProcessingFinishedMeter(snapshotTarget.id)
+  private def buildMetricsStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    val batchProcessingFinishedMeter = getBatchProcessingFinishedMeter(snapshotPipeline.id)
+    val eventProcessingFinishedMeter = getEventProcessingFinishedMeter(snapshotPipeline.id)
     Flow[(EventBatch, ProcessingContext)].map { case r @ (batch, _) =>
       batchProcessingFinishedMeter.mark()
       eventProcessingFinishedMeter.mark(batch.events.size)
