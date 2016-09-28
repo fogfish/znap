@@ -179,12 +179,11 @@ object Config {
       val destConfig = configObject.getObject("destination").toConfig
       destConfig.getString("type") match {
         case "dynamodb" =>
-          val restURIBuilder = new URIBuilder(destConfig.getString("url"))
-          restURIBuilder.setPort(resolvePort(restURIBuilder.getScheme, restURIBuilder.getPort))
+          val uriBuilder = new URIBuilder(destConfig.getString("url"))
+          uriBuilder.setPort(resolvePort(uriBuilder.getScheme, uriBuilder.getPort))
 
           val tableName = destConfig.getString("table-name")
-          val offsetsTableName = destConfig.getString("offsets-table-name")
-          DynamoDBDestination(restURIBuilder.build(), tableName, offsetsTableName)
+          DynamoDBDestination(uriBuilder.build(), tableName)
 
         case "disk" =>
           DiskDestination()
@@ -238,10 +237,22 @@ object Config {
       }
     }
 
+    val offsetPersistence = {
+      val offsetPersistenceConfig = configObject.getObject("offset-persistence").toConfig
+      offsetPersistenceConfig.getString("type") match {
+        case "dynamodb" =>
+          val uriBuilder = new URIBuilder(offsetPersistenceConfig.getString("url"))
+          uriBuilder.setPort(resolvePort(uriBuilder.getScheme, uriBuilder.getPort))
+
+          val tableName = offsetPersistenceConfig.getString("table-name")
+          DynamoDBOffsetPersistence(uriBuilder.build(), tableName)
+      }
+    }
+
     val key = configObject.getString("key").split('.').toList
     val compress = configObject.getBoolean("compress")
 
-    SnapshotTarget(id, source, destination, signalling, dumping, key, compress)
+    SnapshotTarget(id, source, destination, signalling, dumping, offsetPersistence, key, compress)
   }
 
   private def parsePublishTypeString(publishTypeString: String): PublishType = {

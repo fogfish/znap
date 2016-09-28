@@ -9,7 +9,7 @@ package org.zalando.znap.dumps
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.scalatest.{FunSpec, Matchers}
-import org.zalando.znap.config.{EmptyDestination, EmptySource, SnapshotTarget}
+import org.zalando.znap.config.{EmptyDestination, EmptyOffsetPersistence, EmptySource, SnapshotTarget}
 import org.zalando.znap.dumps
 
 class DumpTrackerSuite extends FunSpec with Matchers {
@@ -21,9 +21,9 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   private val dumpUid2 = "x2"
 
   private val target1 = SnapshotTarget(
-    "id1", EmptySource, EmptyDestination, None, None, Nil, compress = false)
+    "id1", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil, compress = false)
   private val target2 = SnapshotTarget(
-    "id2", EmptySource, EmptyDestination, None, None, Nil, compress = false)
+    "id2", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil, compress = false)
 
   it("should not return status for an unknown dump") {
     val dt = new DumpTracker

@@ -11,7 +11,7 @@ import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import org.slf4j.LoggerFactory
-import org.zalando.znap.config.{Config, DynamoDBDestination, NakadiSource, SnapshotTarget}
+import org.zalando.znap.config._
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.persistence.dynamo.DynamoDBOffsetReader
 import org.zalando.znap.source.nakadi.{NakadiPartitionGetter, NakadiTokens}
@@ -79,14 +79,14 @@ object ProgressChecker {
         throw new Exception(s"Source type $s is not supported")
     }
 
-    private val getOffsetFunc = target.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
+    private val getOffsetFunc = target.offsetPersistence match {
+      case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val dynamoDBClient = new AmazonDynamoDBClient()
-        dynamoDBClient.withEndpoint(dynamoDBDestination.uri.toString)
+        dynamoDBClient.withEndpoint(dynamoDBOffsetPersistence.uri.toString)
         val dynamoDB = new DynamoDB(dynamoDBClient)
 
         val dispatcher = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
-        val offsetReader = new DynamoDBOffsetReader(target, dynamoDB)(dispatcher)
+        val offsetReader = new DynamoDBOffsetReader(dynamoDBOffsetPersistence, dynamoDB)(dispatcher)
         offsetReader.init()
 
         offsetReader.getLastOffsets _

@@ -153,15 +153,12 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   }
 
   private def buildOffsetReader(snapshotTarget: SnapshotTarget): OffsetReaderSync = {
-    val offsetReader = snapshotTarget.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
-        val uri = dynamoDBDestination.uri.toString
-        new DynamoDBOffsetReader(snapshotTarget, getDynamoDB(uri))(dynamoExecutionContext)
+    val offsetReader = snapshotTarget.offsetPersistence match {
+      case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
+        val uri = dynamoDBOffsetPersistence.uri.toString
+        new DynamoDBOffsetReader(dynamoDBOffsetPersistence, getDynamoDB(uri))(dynamoExecutionContext)
 
-      case _: DiskDestination =>
-        new DiskOffsetReader(snapshotTarget)(diskExecutionContext)
-
-      case EmptyDestination =>
+      case EmptyOffsetPersistence  =>
         throw new Exception("EmptyDestination is not supported")
     }
 
@@ -301,10 +298,10 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   }
 
   private def buildOffsetWriteStep(snapshotTarget: SnapshotTarget): FlowType = {
-    val (props, dispatcherAttributes, writerName) = snapshotTarget.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
-        val uri = dynamoDBDestination.uri.toString
-        val offsetWriter = new DynamoDBOffsetWriter(snapshotTarget, getDynamoDB(uri))
+    val (props, dispatcherAttributes, writerName) = snapshotTarget.offsetPersistence match {
+      case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
+        val uri = dynamoDBOffsetPersistence.uri.toString
+        val offsetWriter = new DynamoDBOffsetWriter(dynamoDBOffsetPersistence, getDynamoDB(uri))
         offsetWriter.init()
 
         val props = OffsetWriterActor.props(
@@ -315,20 +312,20 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
           ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
           "dynamo")
 
-      case _: DiskDestination =>
-        val offsetWriter = new DiskOffsetWriter(snapshotTarget)
-        offsetWriter.init()
+//      case _: DiskDestination =>
+//        val offsetWriter = new DiskOffsetWriter(snapshotTarget)
+//        offsetWriter.init()
+//
+//        val props = OffsetWriterActor.props(
+//          snapshotTarget, Config.Persistence.Disk.OffsetWritePeriod, offsetWriter)
+//          .withDispatcher(Config.Akka.DiskDBDispatcher)
+//
+//        (props,
+//          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
+//          "disk")
 
-        val props = OffsetWriterActor.props(
-          snapshotTarget, Config.Persistence.Disk.OffsetWritePeriod, offsetWriter)
-          .withDispatcher(Config.Akka.DiskDBDispatcher)
-
-        (props,
-          ActorAttributes.dispatcher(Config.Akka.DiskDBDispatcher),
-          "disk")
-
-      case EmptyDestination =>
-        throw new Exception("EmptyDestination is not supported")
+      case EmptyOffsetPersistence =>
+        throw new Exception("EmptyOffsetPersistence is not supported")
     }
 
     val branch = Flow[(EventBatch, ProcessingContext)]
@@ -367,6 +364,7 @@ object PipelineBuilder {
           val duration = finish - start
           val sum = stageDurationSums.getOrElse(stage, 0L) + duration
           stageDurationSums += stage -> sum
+
 
           if (previousWriteDynamoFinished.nonEmpty && stage == "write-dynamo") {
             val betweenStage = "between-two-write-dynamo"
