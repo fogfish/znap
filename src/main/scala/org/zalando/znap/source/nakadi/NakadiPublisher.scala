@@ -5,9 +5,11 @@ import java.util.concurrent.TimeoutException
 
 import akka.NotUsed
 import akka.actor.ActorSystem
+import akka.http.javadsl.model.headers.AcceptEncoding
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.{Authorization, OAuth2BearerToken}
+import akka.http.scaladsl.model.headers.{Authorization, HttpEncoding, HttpEncodings, OAuth2BearerToken}
 import akka.stream.scaladsl.{Framing, Source}
 import akka.stream.{ActorMaterializerSettings, _}
 import akka.util.ByteString
@@ -152,7 +154,8 @@ class NakadiPublisher(nakadiSource: NakadiSource,
 
     val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
     val xNakadiCursor = new XNakadiCursors(partition, offset)
-    val headers = List(authorizationHeader, xNakadiCursor)
+    val acceptEncoding = AcceptEncoding.create(HttpEncodings.gzip)
+    val headers = List(authorizationHeader, xNakadiCursor, acceptEncoding)
 
     val nakadiConnectionFlow =
       if (nakadiSource.uri.getScheme.equals("https")) {
@@ -168,6 +171,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   private def processNormalResponse(response: HttpResponse): Source[EventBatch, Any] = {
     response.entity.withSizeLimit(Config.HttpStreamingMaxSize)
       .dataBytes
+      .via(Gzip.decoderFlow)
 
       // Coalesce chunks into a line.
       .via(Framing.delimiter(ByteString("\n"), Int.MaxValue))
@@ -177,7 +181,10 @@ class NakadiPublisher(nakadiSource: NakadiSource,
 
   private def processPreconditionFailedResponse(partition: String, offset: String, response: HttpResponse): Source[Nothing, Any] = {
     val offsetUnavailableRegex = s"""^offset\\s\\d+\\sfor\\spartition\\s$partition\\sis\\sunavailable$$""".r
-    response.entity.dataBytes.fold("")(_ + " " + _.utf8String).map { content =>
+    response
+      .entity.dataBytes.via(Gzip.decoderFlow)
+
+      .fold("")(_ + " " + _.utf8String).map { content =>
       val preconditionFailedContent = Json.read[PreconditionFailedContent](content)
       assert(preconditionFailedContent.status == StatusCodes.PreconditionFailed.intValue)
 
@@ -191,7 +198,10 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   }
 
   private def processUnknownResponse(partition: String, unknownResponse: HttpResponse): Source[Nothing, Any] = {
-    unknownResponse.entity.dataBytes.map { bs =>
+    unknownResponse
+      .entity.dataBytes.via(Gzip.decoderFlow)
+
+      .map { bs =>
       val msg = s"Unknown response on getting events from partition $partition: $unknownResponse ${bs.utf8String}"
       throw new Exception(msg)
     }
