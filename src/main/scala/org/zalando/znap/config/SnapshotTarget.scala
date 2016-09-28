@@ -24,8 +24,7 @@ final case class SourceFilter(field: String,
 sealed trait SnapshotDestination
 case object EmptyDestination extends SnapshotDestination
 final case class DynamoDBDestination(uri: URI,
-                                     tableName: String,
-                                     offsetsTableName: String) extends SnapshotDestination
+                                     tableName: String) extends SnapshotDestination
 final case class DiskDestination() extends SnapshotDestination
 
 
@@ -44,6 +43,10 @@ final case class KinesisDumping(amazonRegion: String,
                                 stream: String,
                                 publishType: PublishType) extends Dumping
 
+sealed trait OffsetPersistence
+case object EmptyOffsetPersistence extends OffsetPersistence
+final case class DynamoDBOffsetPersistence(uri: URI,
+                                           tableName: String) extends OffsetPersistence
 
 sealed trait PublishType
 object PublishType {
@@ -58,5 +61,6 @@ final case class SnapshotTarget(id: TargetId,
                                 destination: SnapshotDestination,
                                 signalling: Option[Signalling],
                                 dumping: Option[Dumping],
+                                offsetPersistence: OffsetPersistence,
                                 key: List[String],
                                 compress: Boolean)
