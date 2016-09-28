@@ -28,11 +28,6 @@ object Main extends App {
   // Init config.
   Config
 
-  // Bootstrap directory structure if a disk destination exists.
-  if (Config.Targets.exists(_.destination.isInstanceOf[DiskDestination])) {
-    Bootstrapper.bootstrap()
-  }
-
   val tokens = new NakadiTokens()
 
   implicit val actorSystem = ActorSystem("znap")

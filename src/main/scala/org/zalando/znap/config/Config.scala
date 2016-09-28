@@ -43,7 +43,6 @@ object Config {
   // Application config.
 
   object Akka {
-    val DiskDBDispatcher = "disk-dispatcher"
     val DynamoDBDispatcher = "dynamodb-dispatcher"
     val SqsDispatcher = "sqs-dispatcher"
     val KinesisDispatcher = "kinesis-dispatcher"
@@ -67,26 +66,6 @@ object Config {
   val HttpStreamingMaxSize = appConfig.getBytes("http.streamingMaxSize")
 
   object Persistence {
-    object Disk {
-      val SnapshotInitTimeout = {
-        val t = appConfig.getDuration("persistence.disk.snapshotInitTimeout")
-        FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS)
-      }
-
-      val SnapshotInterval = {
-        val t = appConfig.getDuration("persistence.disk.snapshotInterval")
-        FiniteDuration(t.toMillis, TimeUnit.MILLISECONDS)
-      }
-
-      // TODO dirs part of persistence global config. (folders has to be backed by EBS)
-      object Paths {
-        val WorkingDirectory = appConfig.getString("persistence.disk.workingDirectory")
-        val SnapshotsDirectory = appConfig.getString("persistence.disk.snapshotsDirectory")
-      }
-
-      val OffsetWritePeriod = readOffsetWritePeriod(appConfig, "persistence.disk.offset-write-period")
-    }
-
     object DynamoDB {
       val OffsetWritePeriod = readOffsetWritePeriod(appConfig, "persistence.dynamodb.offset-write-period")
     }
@@ -125,21 +104,22 @@ object Config {
   // Snapshots config.
 
 
-  val Targets: List[SnapshotTarget] = {
-    val targets = appConfig.getObjectList("snapshotting.targets").toList.map(co => readSnapshotTarget(co.toConfig))
+  val Pipelines: List[SnapshotPipeline] = {
+    val pipelines = appConfig.getObjectList("snapshotting.pipelines")
+      .toList.map(co => readSnapshotPipeline(co.toConfig))
 
     // Check ids uniqueness.
-    val allIds = targets.map(_.id)
+    val allIds = pipelines.map(_.id)
     allIds.groupBy(x => x).foreach { case (id, lst) =>
       if (lst.size > 1) {
-        throw new Exception(s"Target id $id is not unique")
+        throw new Exception(s"Pipeline id $id is not unique")
       }
     }
 
-    targets
+    pipelines
   }
 
-  private def readSnapshotTarget(configObject: TypesafeConfig): SnapshotTarget = {
+  private def readSnapshotPipeline(configObject: TypesafeConfig): SnapshotPipeline = {
     val id = configObject.getString("id")
 
     val source = {
@@ -184,9 +164,6 @@ object Config {
 
           val tableName = destConfig.getString("table-name")
           DynamoDBDestination(uriBuilder.build(), tableName)
-
-        case "disk" =>
-          DiskDestination()
       }
     }
 
@@ -252,7 +229,7 @@ object Config {
     val key = configObject.getString("key").split('.').toList
     val compress = configObject.getBoolean("compress")
 
-    SnapshotTarget(id, source, destination, signalling, dumping, offsetPersistence, key, compress)
+    SnapshotPipeline(id, source, destination, signalling, dumping, offsetPersistence, key, compress)
   }
 
   private def parsePublishTypeString(publishTypeString: String): PublishType = {

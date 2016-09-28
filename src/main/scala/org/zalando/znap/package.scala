@@ -8,6 +8,6 @@
 package org.zalando
 
 package object znap {
-  type TargetId = String
+  type PipelineId = String
   type PartitionId = String
 }

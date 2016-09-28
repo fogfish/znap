@@ -13,13 +13,13 @@ import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.GetItemOutcome
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
-import org.zalando.znap.TargetId
+import org.zalando.znap.PipelineId
 import org.zalando.znap.config.{Config, DynamoDBDestination}
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class DynamoDBEntityReader(targetId: TargetId,
+class DynamoDBEntityReader(pipelineId: PipelineId,
                            client: AmazonDynamoDBClient,
                            dynamoDBDestination: DynamoDBDestination) extends Actor with NoUnexpectedMessages with ActorLogging with Instrumented {
   import EntityReaderService._
@@ -27,7 +27,7 @@ class DynamoDBEntityReader(targetId: TargetId,
 //  private val dynamoDB = new DynamoDB(client)
 //  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
 
-  private val timer = metrics.timer(s"get-entity-dynamo-$targetId")
+  private val timer = metrics.timer(s"get-entity-dynamo-$pipelineId")
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
@@ -77,7 +77,9 @@ class DynamoDBEntityReader(targetId: TargetId,
 }
 
 object DynamoDBEntityReader {
-  def props(targetId: TargetId, client: AmazonDynamoDBClient, dynamoDBDestination: DynamoDBDestination): Props = {
-    Props(classOf[DynamoDBEntityReader], targetId, client, dynamoDBDestination)
+  def props(pipelineId: PipelineId,
+            client: AmazonDynamoDBClient,
+            dynamoDBDestination: DynamoDBDestination): Props = {
+    Props(classOf[DynamoDBEntityReader], pipelineId, client, dynamoDBDestination)
   }
 }

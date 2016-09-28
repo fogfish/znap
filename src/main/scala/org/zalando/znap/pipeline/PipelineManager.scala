@@ -9,7 +9,7 @@ package org.zalando.znap.pipeline
 
 import akka.actor.{Actor, ActorLogging}
 import akka.stream.{ActorMaterializer, KillSwitch}
-import org.zalando.znap.TargetId
+import org.zalando.znap.PipelineId
 import org.zalando.znap.config.Config
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
@@ -25,39 +25,39 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
 
   private val pipelineBuilder = new PipelineBuilder(tokens)(context.system)
 
-  private val targets = Config.Targets.map(t => t.id -> t).toMap
-  private var pipelines = Map.empty[String, Pipeline]
-  private var runningPipelines = Set.empty[Pipeline]
+  private val pipelineConfigs = Config.Pipelines.map(t => t.id -> t).toMap
+  private var pipelines = Map.empty[String, RunnablePipeline]
+  private var runningPipelines = Set.empty[RunnablePipeline]
   private var killSwitches = Map.empty[String, KillSwitch]
 
   override def preStart(): Unit = {
-    Config.Targets.foreach { snapshotTarget =>
-      val targetId = snapshotTarget.id
+    Config.Pipelines.foreach { snapshotPipeline =>
+      val pipelineId = snapshotPipeline.id
 
-      pipelineBuilder.build(targetId, snapshotTarget).foreach {
+      pipelineBuilder.build(pipelineId, snapshotPipeline).foreach {
         case (partitionId, pipeline) =>
-          pipelines += (targetId + partitionId) -> pipeline
-          startPipeline(targetId, partitionId)
+          pipelines += (pipelineId + partitionId) -> pipeline
+          startPipeline(pipelineId, partitionId)
       }
     }
   }
 
-  private def startPipeline(targetId: TargetId, partitionId: String): Unit = {
-    val pipeline = pipelines(targetId + partitionId)
+  private def startPipeline(pipelineId: PipelineId, partitionId: String): Unit = {
+    val pipeline = pipelines(pipelineId + partitionId)
     assertNotRunning(pipeline)
     runningPipelines += pipeline
 
     val (killSwitch, completionFuture) = pipeline.run()
-    killSwitches += (targetId + partitionId) -> killSwitch
+    killSwitches += (pipelineId + partitionId) -> killSwitch
     completionFuture pipeTo self
-    log.info(s"Pipeline $targetId for partition $partitionId started")
+    log.info(s"Pipeline $pipelineId for partition $partitionId started")
   }
 
   override def receive: Receive = {
-    case p @ PipelineFinished(targetId, partitionId) =>
+    case p @ PipelineFinished(pipelineId, partitionId) =>
       log.error(s"Pipeline finishing is not expected, shutting down.")
 
-      val pipeline = pipelines(targetId + partitionId)
+      val pipeline = pipelines(pipelineId + partitionId)
       assertRunning(pipeline)
       runningPipelines -= pipeline
 
@@ -66,20 +66,20 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
       }
       throw new Exception("Pipeline finishing is not expected.")
 
-    case p @ PipelineFailed(targetId, partitionId, cause) =>
-      log.error(s"Pipeline $targetId for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
+    case p @ PipelineFailed(pipelineId, partitionId, cause) =>
+      log.error(s"Pipeline $pipelineId for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
 
-      val pipeline = pipelines(targetId + partitionId)
+      val pipeline = pipelines(pipelineId + partitionId)
       assertRunning(pipeline)
       runningPipelines -= pipeline
 
-      startPipeline(targetId, partitionId)
+      startPipeline(pipelineId, partitionId)
   }
 
-  private def assertRunning(pipeline: Pipeline): Unit = {
+  private def assertRunning(pipeline: RunnablePipeline): Unit = {
     assert(runningPipelines.contains(pipeline))
   }
-  private def assertNotRunning(pipeline: Pipeline): Unit = {
+  private def assertNotRunning(pipeline: RunnablePipeline): Unit = {
     assert(!runningPipelines.contains(pipeline))
   }
 }

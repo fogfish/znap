@@ -27,9 +27,9 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
   private val entityReaderService = new EntityReaderService(actorRoot)
 
-  private val targets = Config.Targets.map(t => t.id -> t).toMap
+  private val pipelines = Config.Pipelines.map(t => t.id -> t).toMap
 
-  private val measureLatencyDirectives = Config.Targets.map { t =>
+  private val measureLatencyDirectives = Config.Pipelines.map { t =>
     t.id -> new MeasureLatencyDirective(t.id)(actorSystem)
   }.toMap
 
@@ -45,10 +45,10 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     // Start dumping of a snapshot.
     val routeStartDump =
       path("snapshots" / Segment / "dump") {
-        (targetId: TargetId) => {
+        (pipelineId: PipelineId) => {
           post {
             parameter('force_restart ? false) { forceRestart =>
-              startDump(targetId, forceRestart)
+              startDump(pipelineId, forceRestart)
             }
           }
         }
@@ -68,11 +68,11 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     // Get an entity from a snapshot.
     val routeGetSnapshotEntity =
     path("snapshots" / Segment / "entities" / Segment) {
-      (targetId: TargetId, key: String) => {
-        measureLatencyDirectives(targetId) {
+      (pipelineId: PipelineId, key: String) => {
+        measureLatencyDirectives(pipelineId) {
           get {
             encodeResponseWith(Gzip) {
-              getSnapshotEntity(targetId, key)
+              getSnapshotEntity(pipelineId, key)
             }
           }
         }
@@ -96,17 +96,17 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   }
 
   private def getSnapshotList: StandardRoute = {
-    val targetIds = Config.Targets.map(_.id)
-    val responseString = Json.write(targetIds)
+    val pipelineIds = Config.Pipelines.map(_.id)
+    val responseString = Json.write(pipelineIds)
     val contentType = MediaTypes.`application/json`
     val response = HttpResponse(entity = HttpEntity(contentType, responseString))
     complete(response)
   }
 
-  private def startDump(targetId: TargetId, forceRestart: Boolean): StandardRoute = {
-    targets.get(targetId) match {
-      case Some(target) =>
-        val result = DumpKeysService.dump(target, forceRestart).map {
+  private def startDump(pipelineId: PipelineId, forceRestart: Boolean): StandardRoute = {
+    pipelines.get(pipelineId) match {
+      case Some(pipeline) =>
+        val result = DumpKeysService.dump(pipeline, forceRestart).map {
           case DumpManager.DumpStarted(dumpUid) =>
             val responseString = Json.createObject("dumpUid" -> dumpUid)
               .toString
@@ -118,7 +118,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
           case DumpManager.AnotherDumpAlreadyRunning(dumpUid) =>
             val responseString = Json.createObject(
-              "message" -> s"Another dump for target $targetId is running",
+              "message" -> s"Another dump for pipeline $pipelineId is running",
               "dumpUid" -> dumpUid
             ).toString
             val contentType = MediaTypes.`application/json`
@@ -129,7 +129,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
           case DumpManager.DumpingNotConfigured =>
             val responseString = Json.createObject(
-              "message" -> s"Dumping for target $targetId is not configured"
+              "message" -> s"Dumping for pipeline $pipelineId is not configured"
             ).toString
             val contentType = MediaTypes.`application/json`
             HttpResponse(
@@ -140,7 +140,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         complete(result)
 
       case None =>
-        complete(unknownTargetResponse(targetId))
+        complete(unknownPipelineResponse(pipelineId))
     }
   }
 
@@ -203,12 +203,12 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     complete(result)
   }
 
-  private def getSnapshotEntity(targetId: TargetId, key: String): StandardRoute = {
+  private def getSnapshotEntity(pipelineId: PipelineId, key: String): StandardRoute = {
     import scala.language.postfixOps
 
-    targets.get(targetId) match {
-      case Some(target) =>
-        val result = entityReaderService.getEntity(targetId, key).map {
+    pipelines.get(pipelineId) match {
+      case Some(pipeline) =>
+        val result = entityReaderService.getEntity(pipelineId, key).map {
           case EntityReaderService.Entity(`key`, Some(str)) =>
             HttpResponse(entity = HttpEntity(str))
 
@@ -239,13 +239,13 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         complete(result)
 
       case None =>
-        complete(unknownTargetResponse(targetId))
+        complete(unknownPipelineResponse(pipelineId))
     }
   }
 
-  private def unknownTargetResponse(targetId: TargetId): HttpResponse = {
+  private def unknownPipelineResponse(pipelineId: PipelineId): HttpResponse = {
     val contentType = MediaTypes.`application/json`
-    val responseString = s"""{"message": "Unknown target $targetId"}"""
+    val responseString = s"""{"message": "Unknown pipeline $pipelineId"}"""
     HttpResponse(
       StatusCodes.NotFound,
       entity = HttpEntity(contentType, responseString)
@@ -269,11 +269,11 @@ object RestApi {
     * Directive for measuring latencies of HTTP queries
     * and sending them to Dropwizard.
     */
-  class MeasureLatencyDirective(targetId: TargetId)
+  class MeasureLatencyDirective(pipelineId: PipelineId)
                                (implicit actorSystem: ActorSystem) extends Directive0 with Instrumented {
     private implicit val executionContext = actorSystem.dispatcher
 
-    private val timer = metrics.timer(s"get-entity-rest-$targetId")
+    private val timer = metrics.timer(s"get-entity-rest-$pipelineId")
 
     override def tapply(f: (Unit) => Route): Route = {
       ctx => {

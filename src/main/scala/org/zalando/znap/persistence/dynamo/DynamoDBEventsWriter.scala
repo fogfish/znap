@@ -10,15 +10,15 @@ package org.zalando.znap.persistence.dynamo
 import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteItems}
 import com.fasterxml.jackson.databind.JsonNode
 import org.slf4j.LoggerFactory
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotPipeline}
 import org.zalando.znap.persistence.EventsWriterSync
 import org.zalando.znap.utils.{Compressor, Json}
 
-class DynamoDBEventsWriter(snapshotTarget: SnapshotTarget,
+class DynamoDBEventsWriter(snapshotPipeline: SnapshotPipeline,
                            override protected val dynamoDB: DynamoDB) extends EventsWriterSync with DynamoDBWriter {
   private val logger = LoggerFactory.getLogger(classOf[DynamoDBEventsWriter])
 
-  private val dynamoDBDestination: DynamoDBDestination = snapshotTarget.destination.asInstanceOf[DynamoDBDestination]
+  private val dynamoDBDestination: DynamoDBDestination = snapshotPipeline.destination.asInstanceOf[DynamoDBDestination]
 
   override def init(): Unit = {}
 
@@ -33,12 +33,12 @@ class DynamoDBEventsWriter(snapshotTarget: SnapshotTarget,
     val updateItems = new TableWriteItems(dynamoDBDestination.tableName)
 
     events.foreach { e =>
-      val key = Json.getKey(snapshotTarget.key, e)
+      val key = Json.getKey(snapshotPipeline.key, e)
       val item = new Item()
         .withPrimaryKey(Config.DynamoDB.KVTables.Attributes.Key, key)
 
       val jsonString = Json.write(e)
-      if (snapshotTarget.compress) {
+      if (snapshotPipeline.compress) {
         item.withBinary(Config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(jsonString))
       } else {
         item.withString(Config.DynamoDB.KVTables.Attributes.Value, jsonString)

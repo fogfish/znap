@@ -24,8 +24,8 @@ import scala.util.control.NonFatal
 class ProgressChecker(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages with ActorLogging with Instrumented {
   import ProgressChecker._
 
-  private val progressHolders = Config.Targets.map { target =>
-    new ProgressHolder(target, tokens)(context.system)
+  private val progressHolders = Config.Pipelines.map { pipeline =>
+    new ProgressHolder(pipeline, tokens)(context.system)
   }
 
   override def preStart(): Unit = {
@@ -56,7 +56,7 @@ object ProgressChecker {
   }
 
 
-  private class ProgressHolder(target: SnapshotTarget,
+  private class ProgressHolder(pipeline: SnapshotPipeline,
                                tokens: NakadiTokens)
                               (actorSystem: ActorSystem) extends Instrumented {
     private val logger = LoggerFactory.getLogger(classOf[ProgressHolder])
@@ -70,7 +70,7 @@ object ProgressChecker {
     @volatile private var lastValuesPerPartition_NewestAvailableOffset = Map.empty[String, Long]
     @volatile private var lastValuesPerPartition_CurrentOffset = Map.empty[String, Long]
 
-    private val getPartitionsFunc = target.source match {
+    private val getPartitionsFunc = pipeline.source match {
       case nakadiSource: NakadiSource =>
         val partitionGetter = new NakadiPartitionGetter(nakadiSource, tokens)(actorSystem)
         partitionGetter.getPartitions _
@@ -79,7 +79,7 @@ object ProgressChecker {
         throw new Exception(s"Source type $s is not supported")
     }
 
-    private val getOffsetFunc = target.offsetPersistence match {
+    private val getOffsetFunc = pipeline.offsetPersistence match {
       case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val dynamoDBClient = new AmazonDynamoDBClient()
         dynamoDBClient.withEndpoint(dynamoDBOffsetPersistence.uri.toString)
@@ -125,34 +125,34 @@ object ProgressChecker {
                     positionRaw
                   }
 
-                val msg = s"${target.id} ${partition.partition} [" +
+                val msg = s"${pipeline.id} ${partition.partition} [" +
                   "." * position +
                   "*" +
                   ("." * (progressBarSize - position - 1)) +
                   s"] $start - $offsetNum - $end"
                 logger.info(msg)
               } else {
-                logger.error(s"In ${target.id} ${partition.partition}, the current offset is $offsetNum, available offsets are $start - $end.")
+                logger.error(s"In ${pipeline.id} ${partition.partition}, the current offset is $offsetNum, available offsets are $start - $end.")
               }
             case _ =>
-              val msg = s"${target.id} ${partition.partition} [..................................................] $start - __ - $end"
+              val msg = s"${pipeline.id} ${partition.partition} [..................................................] $start - __ - $end"
               logger.info(msg)
           }
         }
       } catch {
         case NonFatal(e) =>
-          logger.warn(s"Can't print progress for ${target.id}: ${ThrowableUtils.getStackTraceString(e)}")
+          logger.warn(s"Can't print progress for ${pipeline.id}: ${ThrowableUtils.getStackTraceString(e)}")
       }
     }
 
     Await.result(getPartitionsFunc(), awaitDuration).sortBy(_.partition).foreach { p =>
-      metrics.gauge(s"${target.id}-${p.partition}-oldestAvailableOffset") {
+      metrics.gauge(s"${pipeline.id}-${p.partition}-oldestAvailableOffset") {
         lastValuesPerPartition_OldestAvailableOffset.getOrElse(p.partition, -1)
       }
-      metrics.gauge(s"${target.id}-${p.partition}-newestAvailableOffset") {
+      metrics.gauge(s"${pipeline.id}-${p.partition}-newestAvailableOffset") {
         lastValuesPerPartition_NewestAvailableOffset.getOrElse(p.partition, -1)
       }
-      metrics.gauge(s"${target.id}-${p.partition}-currentOffset") {
+      metrics.gauge(s"${pipeline.id}-${p.partition}-currentOffset") {
         lastValuesPerPartition_CurrentOffset.getOrElse(p.partition, -1)
       }
     }

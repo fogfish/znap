@@ -8,11 +8,11 @@
 package org.zalando.znap.pipeline
 
 sealed trait PipelineResult {
-  val targetId: String
+  val pipelineId: String
 }
 
-final case class PipelineFinished(targetId: String,
+final case class PipelineFinished(pipelineId: String,
                                   partition: String) extends PipelineResult
-final case class PipelineFailed(targetId: String,
+final case class PipelineFailed(pipelineId: String,
                                 partition: String,
                                 cause: Throwable) extends PipelineResult
