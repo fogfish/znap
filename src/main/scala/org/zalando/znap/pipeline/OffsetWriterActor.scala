@@ -12,7 +12,7 @@ import akka.stream.actor._
 import org.slf4j.LoggerFactory
 import org.zalando.znap.config.SnapshotPipeline
 import org.zalando.znap.persistence.OffsetWriterSync
-import org.zalando.znap.source.nakadi.objects.{Cursor, EventBatch}
+import org.zalando.znap.source.nakadi.objects.Cursor
 import org.zalando.znap.utils.NoUnexpectedMessages
 
 import scala.concurrent.duration.FiniteDuration

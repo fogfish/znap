@@ -13,18 +13,18 @@ import akka.stream.scaladsl.{Merge, Source}
 import akka.stream.{ActorAttributes, Attributes}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.model.{AttributeValue, ScanRequest}
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotPipeline}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 
 
 object SnapshotService {
   private val totalSegments = 4
   private val scanItemLimit = 10
 
-  def getSnapshotKeys(pipeline: SnapshotPipeline): Source[String, Any] = {
+  def getSnapshotKeys(target: SnapshotTarget): Source[String, Any] = {
     assert(totalSegments > 0)
 
     val sources = (0 until totalSegments).toVector.map { segment =>
-      pipeline.destination match {
+      target.destination match {
         case d: DynamoDBDestination =>
           val client = new AmazonDynamoDBClient()
           client.withEndpoint(d.uri.toString)

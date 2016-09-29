@@ -11,7 +11,7 @@ import java.util.UUID
 
 import akka.actor.SupervisorStrategy.{Escalate, Stop}
 import akka.actor.{Actor, ActorLogging, OneForOneStrategy, Props, SupervisorStrategy}
-import org.zalando.znap.config.{SnapshotPipeline, SqsDumping, SqsSignalling}
+import org.zalando.znap.config.{SnapshotTarget, SqsDumping}
 import org.zalando.znap.source.nakadi.NakadiTokens
 import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 
@@ -34,9 +34,9 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
   }
 
   override def receive: Receive = {
-    case DumpCommand(pipeline, forceRestart) =>
-      val result = startDump(pipeline, forceRestart)
-      log.info(s"Received dump command for pipeline ${pipeline.id}, result: $result")
+    case DumpCommand(target, forceRestart) =>
+      val result = startDump(target, forceRestart)
+      log.info(s"Received dump command for target ${target.id}, result: $result")
       sender() ! result
 
     case GetDumpStatus(dumpUid) =>
@@ -48,9 +48,9 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
       log.info(s"Dump $dumpUid finished successfully")
   }
 
-  private def startDump(pipeline: SnapshotPipeline,
+  private def startDump(target: SnapshotTarget,
                         forceRestart: Boolean): DumpCommandResult = {
-    dumpTracker.getDumpUidIfRunning(pipeline) match {
+    dumpTracker.getDumpUidIfRunning(target) match {
       case Some(dumpUID) if !forceRestart =>
         AnotherDumpAlreadyRunning(dumpUID)
 
@@ -62,25 +62,25 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
         assert(oldDumpUid == oldDumpUid1)
         log.info(s"Dump $oldDumpUid aborted")
 
-        startNewDump(pipeline)
+        startNewDump(target)
 
       case None =>
-        startNewDump(pipeline)
+        startNewDump(target)
     }
   }
 
-  private def startNewDump(pipeline: SnapshotPipeline): DumpCommandResult = {
-    val uid = s"${pipeline.id}-${UUID.randomUUID().toString}"
+  private def startNewDump(target: SnapshotTarget): DumpCommandResult = {
+    val uid = s"${target.id}-${UUID.randomUUID().toString}"
 
-    val dumpRunnerProps = pipeline.dumping.map {
+    val dumpRunnerProps = target.dumping.map {
       case _: SqsDumping =>
-        Props(classOf[SqsDumpRunner], tokens, pipeline)
+        Props(classOf[SqsDumpRunner], tokens, target)
     }
 
     dumpRunnerProps match {
       case Some(p) =>
         val dumpRunner = context.actorOf(p)
-        dumpTracker.dumpStarted(pipeline, uid, dumpRunner)
+        dumpTracker.dumpStarted(target, uid, dumpRunner)
         DumpStarted(uid)
 
       case None =>
@@ -97,7 +97,7 @@ object DumpManager {
 
   val name = "dump-manager"
 
-  final case class DumpCommand(snapshotPipeline: SnapshotPipeline,
+  final case class DumpCommand(snapshotTarget: SnapshotTarget,
                                forceRestart: Boolean)
   sealed trait DumpCommandResult
   final case class DumpStarted(dumpUid: DumpUID) extends DumpCommandResult

@@ -9,15 +9,13 @@ package org.zalando.znap.config
 
 import java.net.URI
 
-import org.zalando.znap.PipelineId
+import org.zalando.znap.{PipelineId, TargetId}
 
 sealed trait SnapshotSource
-case object EmptySource extends SnapshotSource
 final case class NakadiSource(uri: URI,
                               eventType: String,
                               batchLimit: Option[Long],
-                              compress: Boolean,
-                              filter: Option[SourceFilter]) extends SnapshotSource
+                              compress: Boolean) extends SnapshotSource
 
 final case class SourceFilter(field: String,
                               values: Set[String])
@@ -57,11 +55,15 @@ object PublishType {
   case object EventsCompressed extends PublishType
 }
 
+final case class SnapshotTarget(id: TargetId,
+                                filter: Option[SourceFilter],
+                                key: List[String],
+                                destination: SnapshotDestination,
+                                signalling: Option[Signalling],
+                                dumping: Option[Dumping])
+
 
 final case class SnapshotPipeline(id: PipelineId,
                                   source: SnapshotSource,
-                                  destination: SnapshotDestination,
-                                  signalling: Option[Signalling],
-                                  dumping: Option[Dumping],
-                                  offsetPersistence: OffsetPersistence,
-                                  key: List[String])
+                                  targets: List[SnapshotTarget],
+                                  offsetPersistence: OffsetPersistence)

@@ -10,11 +10,11 @@ package org.zalando.znap.persistence.dynamo
 import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteItems}
 import com.fasterxml.jackson.databind.JsonNode
 import org.slf4j.LoggerFactory
-import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotPipeline}
+import org.zalando.znap.config.{Config, DynamoDBDestination, SnapshotTarget}
 import org.zalando.znap.persistence.EventsWriterSync
 import org.zalando.znap.utils.{Compressor, Json}
 
-class DynamoDBEventsWriter(snapshotPipeline: SnapshotPipeline,
+class DynamoDBEventsWriter(snapshotPipeline: SnapshotTarget,
                            override protected val dynamoDB: DynamoDB) extends EventsWriterSync with DynamoDBWriter {
   private val logger = LoggerFactory.getLogger(classOf[DynamoDBEventsWriter])
 

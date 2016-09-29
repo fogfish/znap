@@ -12,7 +12,7 @@ import akka.actor.{Actor, ActorLogging}
 import akka.stream.scaladsl.{Flow, Keep, RunnableGraph, Sink}
 import akka.stream.{ActorAttributes, ActorMaterializer, KillSwitches, UniqueKillSwitch}
 import com.amazonaws.services.sqs.AmazonSQSClient
-import org.zalando.znap.config.{Config, SnapshotPipeline, SqsDumping}
+import org.zalando.znap.config.{Config, SnapshotTarget, SqsDumping}
 import org.zalando.znap.dumping.sqs.SqsDumper
 import org.zalando.znap.service.SnapshotService
 import org.zalando.znap.source.nakadi.NakadiTokens
@@ -21,7 +21,7 @@ import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
 import scala.concurrent.Future
 
 class SqsDumpRunner(tokens: NakadiTokens,
-                    pipeline: SnapshotPipeline) extends Actor with NoUnexpectedMessages with ActorLogging {
+                    target: SnapshotTarget) extends Actor with NoUnexpectedMessages with ActorLogging {
 
   import SqsDumpRunner._
   import akka.pattern.pipe
@@ -43,7 +43,7 @@ class SqsDumpRunner(tokens: NakadiTokens,
       context.stop(self)
 
     case akka.actor.Status.Failure(ex) =>
-      log.error(s"Error in SQS dump stream for pipeline ${pipeline.id}: ${ThrowableUtils.getStackTraceString(ex)}")
+      log.error(s"Error in SQS dump stream for target ${target.id}: ${ThrowableUtils.getStackTraceString(ex)}")
       throw ex
 
     case AbortDump =>
@@ -52,10 +52,10 @@ class SqsDumpRunner(tokens: NakadiTokens,
   }
 
   private val dumpGraph: RunnableGraph[(UniqueKillSwitch, Future[Done])] = {
-    val source = SnapshotService.getSnapshotKeys(pipeline)
+    val source = SnapshotService.getSnapshotKeys(target)
 
     val sqsClient = new AmazonSQSClient()
-    val sqsDumping = pipeline.dumping.get.asInstanceOf[SqsDumping]
+    val sqsDumping = target.dumping.get.asInstanceOf[SqsDumping]
     val dumper = new SqsDumper(sqsDumping, sqsClient)
     val signallingStage = Flow[String].map { key =>
       dumper.dump(key)

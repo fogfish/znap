@@ -9,7 +9,7 @@ package org.zalando.znap.dumps
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import org.scalatest.{FunSpec, Matchers}
-import org.zalando.znap.config.{EmptyDestination, EmptyOffsetPersistence, EmptySource, SnapshotPipeline}
+import org.zalando.znap.config.{EmptyDestination, SnapshotTarget}
 import org.zalando.znap.dumps
 
 class DumpTrackerSuite extends FunSpec with Matchers {
@@ -20,10 +20,10 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   private val dumpUid1 = "x1"
   private val dumpUid2 = "x2"
 
-  private val pipeline1 = SnapshotPipeline(
-    "id1", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil)
-  private val pipeline2 = SnapshotPipeline(
-    "id2", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil)
+  private val target1 = SnapshotTarget(
+    "id1", None,  Nil, EmptyDestination, None, None)
+  private val target2 = SnapshotTarget(
+    "id2", None,  Nil, EmptyDestination, None, None)
 
   it("should not return status for an unknown dump") {
     val dt = new DumpTracker
@@ -33,7 +33,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   it("should return status for a started dump") {
     val dt = new DumpTracker
     val dumpUid = "x"
-    dt.dumpStarted(pipeline1, dumpUid, ActorRef.noSender)
+    dt.dumpStarted(target1, dumpUid, ActorRef.noSender)
     dt.getStatus(dumpUid) should not be dumps.UnknownDump
   }
 
@@ -41,7 +41,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
     val dt = new DumpTracker
     val dumpUid = "x"
 
-    dt.dumpStarted(pipeline1, dumpUid, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid, dumpRunner1)
     intercept[IllegalStateException] {
       dt.dumpFinishedSuccessfully(dumpRunner2)
     }
@@ -52,7 +52,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
     val dt = new DumpTracker
     val dumpUid = "x"
 
-    dt.dumpStarted(pipeline1, dumpUid, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid, dumpRunner1)
     intercept[IllegalStateException] {
       dt.dumpAborted(dumpRunner2)
     }
@@ -61,7 +61,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should fail a dump with a legal runner") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     intercept[IllegalStateException] {
       dt.dumpFailed(dumpRunner2, "message")
     }
@@ -70,14 +70,14 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should return status for a finished dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
     dt.getStatus(dumpUid1) shouldBe dumps.DumpFinishedSuccefully
   }
 
   it("should return status for a aborted dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpAborted(dumpRunner1) shouldBe dumpUid1
     dt.getStatus(dumpUid1) shouldBe dumps.DumpAborted
   }
@@ -85,7 +85,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   it("should return status for a failed dump") {
     val dt = new DumpTracker
     val message = "message"
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, message) shouldBe dumpUid1
     dt.getStatus(dumpUid1) shouldBe dumps.DumpFailed(message)
   }
@@ -114,7 +114,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   // Finished dumps
   it("should not allow to finish a finished dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -124,7 +124,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to abort a finished dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -134,7 +134,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to fail a finished dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -145,7 +145,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   // Aborted dumps
   it("should not allow to finish a aborted dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpAborted(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -155,7 +155,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to abort a aborted dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpAborted(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -165,7 +165,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to fail a aborted dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpAborted(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -176,7 +176,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   // Failed dumps
   it("should not allow to finish a failed dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, "message") shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -186,7 +186,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to abort a failed dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, "message") shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -196,7 +196,7 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to fail a failed dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, "message") shouldBe dumpUid1
 
     intercept[IllegalStateException] {
@@ -208,55 +208,55 @@ class DumpTrackerSuite extends FunSpec with Matchers {
 
   it("should not allow to start two dumps with one pipeline") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline1, dumpUid2, dumpRunner2)
+      dt.dumpStarted(target1, dumpUid2, dumpRunner2)
     }
   }
 
   it("should not allow to start two dumps with one runner") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline2, dumpUid2, dumpRunner1)
+      dt.dumpStarted(target2, dumpUid2, dumpRunner1)
     }
   }
 
   it("should not allow to start two dumps with one uid") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline2, dumpUid1, dumpRunner2)
+      dt.dumpStarted(target2, dumpUid1, dumpRunner2)
     }
   }
 
   it("should not allow to start a dump with the uid of some finished dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFinishedSuccessfully(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline2, dumpUid1, dumpRunner1)
+      dt.dumpStarted(target2, dumpUid1, dumpRunner1)
     }
   }
 
   it("should not allow to start a dump with the uid of some aborted dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpAborted(dumpRunner1) shouldBe dumpUid1
 
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline2, dumpUid1, dumpRunner1)
+      dt.dumpStarted(target2, dumpUid1, dumpRunner1)
     }
   }
 
   it("should not allow to start a dump with the uid of some failed dump") {
     val dt = new DumpTracker
-    dt.dumpStarted(pipeline1, dumpUid1, dumpRunner1)
+    dt.dumpStarted(target1, dumpUid1, dumpRunner1)
     dt.dumpFailed(dumpRunner1, "message") shouldBe dumpUid1
 
     intercept[IllegalStateException] {
-      dt.dumpStarted(pipeline2, dumpUid1, dumpRunner1)
+      dt.dumpStarted(target2, dumpUid1, dumpRunner1)
     }
   }
 }
