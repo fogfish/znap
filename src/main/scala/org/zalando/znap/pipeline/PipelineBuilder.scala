@@ -35,9 +35,7 @@ import scala.util.control.NonFatal
 
 private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) extends Instrumented {
 
-  import PipelineBuilder._
-
-  private type FlowType = Flow[(EventBatch, ProcessingContext), (EventBatch, ProcessingContext), NotUsed]
+  private type FlowType = Flow[EventBatch, EventBatch, NotUsed]
 
   private val Encoding = "UTF-8"
 
@@ -97,6 +95,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     }
   }
 
+  private val dynamoWriteTimer = metrics.timer(s"dynamo-write")
+  private val sqsSignalTimer = metrics.timer(s"sqs-signal")
+
   /**
     * Build a pipeline in a form of Akka Streams graph.
     * @param id the pipeline ID.
@@ -115,17 +116,16 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       val offsetWriteStep = buildOffsetWriteStep(snapshotPipeline)
       val metricsStep = buildMetricsStep(snapshotPipeline)
 
-//      val sink = Sink.ignore
+      val sink = Sink.ignore
 //      val sink = Sink.foreach(println)
 
-      val eventBatchCountLogger = new EventBatchCountLogger(id, partitionId)
-      val sink = Sink.foreach[(EventBatch, ProcessingContext)] {
-        case (batch, processingContext) =>
-          eventBatchCountLogger.log(batch, processingContext)
-      }
+//      val eventBatchCountLogger = new EventBatchCountLogger(id, partitionId)
+//      val sink = Sink.foreach[(EventBatch, ProcessingContext)] {
+//        case (batch, processingContext) =>
+//          eventBatchCountLogger.log(batch, processingContext)
+//      }
 
       val graph = source
-        .map(b => (b, ProcessingContext()))
         .via(dataWriteStep)
         .via(signalStep)
         .via(offsetWriteStep)
@@ -186,13 +186,14 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       }
       eventsWriter.init()
 
-      Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
-      val filteredEvents = filterEvents(target, batch)
+      Flow[EventBatch].map { batch =>
+        val filteredEvents = filterEvents(target, batch)
 
-      val timeStart = getTime
-        eventsWriter.write(filteredEvents)
-        val timeFinish = getTime
-        (batch, processingContext.saveStageTime(s"write-$writerName", timeStart, timeFinish))
+        dynamoWriteTimer.time {
+          eventsWriter.write(filteredEvents)
+        }
+
+        batch
       }
         .addAttributes(dispatcherAttributes)
         .async
@@ -227,7 +228,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
 //          buildKinesisSignalStep(kinesisSignalling, target.key)
 
         case None =>
-          Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
+          Flow[EventBatch].map(x => x) // empty
       }
     }
 
@@ -239,10 +240,9 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   private def buildSqsSignalStep(target: SnapshotTarget, sqsSignalling: SqsSignalling, keyPath: List[String]): FlowType = {
     val signaller = new SqsSignaller(sqsSignalling, sqsClient)
 
-    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+    Flow[EventBatch].map { batch =>
       val filteredEvents = filterEvents(target, batch)
 
-      val timeStart = getTime
       val valuesToSignal = filteredEvents.map { event =>
         sqsSignalling.publishType match {
           case PublishType.KeysOnly =>
@@ -255,40 +255,16 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
             Compressor.compressBase64(Json.write(event))
         }
       }
-      signaller.signal(valuesToSignal)
-      val timeFinish = getTime
-      (batch, processingContext.saveStageTime("signal-sqs", timeStart, timeFinish))
+
+      sqsSignalTimer.time {
+        signaller.signal(valuesToSignal)
+      }
+
+      batch
     }
       .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))
       .async
   }
-
-//  private def buildKinesisSignalStep(kinesisSignalling: KinesisSignalling, keyPath: List[String]): FlowType = {
-//    val signaller = new KinesisSignaller(getKinesisProducer(kinesisSignalling.amazonRegion), kinesisSignalling.stream)
-//
-//    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
-//      val timeStart = getTime
-//      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
-//        val key = Json.getKey(keyPath, event)
-//        val value = kinesisSignalling.publishType match {
-//          case PublishType.KeysOnly =>
-//            key.getBytes(Encoding)
-//
-//          case PublishType.EventsUncompressed =>
-//            Json.write(event).getBytes(Encoding)
-//
-//          case PublishType.EventsCompressed =>
-//            Compressor.compress(Json.write(event))
-//        }
-//        (key, value)
-//      }
-//      signaller.signal(valuesToSignal)
-//      val timeFinish = getTime
-//      (batch, processingContext.saveStageTime("signal-kinesis", timeStart, timeFinish))
-//    }
-//      .addAttributes(ActorAttributes.dispatcher(Config.Akka.KinesisDispatcher))
-//      .async
-//  }
 
   private def buildOffsetWriteStep(snapshotPipeline: SnapshotPipeline): FlowType = {
     val (props, dispatcherAttributes, writerName) = snapshotPipeline.offsetPersistence match {
@@ -309,79 +285,23 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
         throw new Exception("EmptyOffsetPersistence is not supported")
     }
 
-    val branch = Flow[(EventBatch, ProcessingContext)]
-      .map { case (eventBatch, _) => eventBatch.cursor }
+    val branch = Flow[EventBatch]
+      .map(_.cursor)
       .to(Sink.actorSubscriber(props))
       .addAttributes(dispatcherAttributes)
       .async
 
-    Flow[(EventBatch, ProcessingContext)]
+    Flow[EventBatch]
       .alsoTo(branch)
   }
 
   private def buildMetricsStep(snapshotPipeline: SnapshotPipeline): FlowType = {
     val batchProcessingFinishedMeter = getBatchProcessingFinishedMeter(snapshotPipeline.id)
     val eventProcessingFinishedMeter = getEventProcessingFinishedMeter(snapshotPipeline.id)
-    Flow[(EventBatch, ProcessingContext)].map { case r @ (batch, _) =>
+    Flow[EventBatch].map { batch =>
       batchProcessingFinishedMeter.mark()
       eventProcessingFinishedMeter.mark(batch.events.size)
-      r
+      batch
     }
-  }
-}
-
-object PipelineBuilder {
-  private class EventBatchCountLogger(id: String, partitionId: String) {
-    private val logger = LoggerFactory.getLogger(classOf[EventBatchCountLogger])
-
-    private var counter = 0
-
-    private var stageDurationSums = Map.empty[String, Long]
-    private var previousWriteDynamoFinished: Option[Long] = None
-
-    def log(batch: EventBatch, processingContext: ProcessingContext): Unit = {
-      processingContext.stageTimes.foreach {
-        case (stage, start, finish) if stage == "write-dynamo" || stage == "signal-sqs" =>
-          val duration = finish - start
-          val sum = stageDurationSums.getOrElse(stage, 0L) + duration
-          stageDurationSums += stage -> sum
-
-
-          if (previousWriteDynamoFinished.nonEmpty && stage == "write-dynamo") {
-            val betweenStage = "between-two-write-dynamo"
-            val duration = start - previousWriteDynamoFinished.get
-            val sum = stageDurationSums.getOrElse(betweenStage, 0L) + duration
-            stageDurationSums += betweenStage -> sum
-          }
-          previousWriteDynamoFinished = Some(finish)
-
-        case _ =>
-      }
-
-      val statisticsWindow = 200
-      counter += 1
-      if (counter % statisticsWindow == 0) {
-        val averagePerStage = stageDurationSums.map { case (stage, sum) =>
-          s"$stage - ${sum / statisticsWindow}"
-        }.mkString(", ")
-        stageDurationSums = Map.empty
-
-        logger.debug(s"Pipeline $id in partition $partitionId processed $counter batches. Avg. durations: $averagePerStage")
-      }
-    }
-  }
-
-  private case class ProcessingContext(stageTimes: List[(String, Long, Long)]) {
-    def saveStageTime(stage: String, start: Long, finish: Long): ProcessingContext = {
-      this.copy(stageTimes = (stage, start, finish) :: stageTimes)
-    }
-  }
-
-  private object ProcessingContext {
-    def apply(): ProcessingContext = ProcessingContext(Nil)
-  }
-
-  private def getTime: Long = {
-    System.currentTimeMillis()
   }
 }
