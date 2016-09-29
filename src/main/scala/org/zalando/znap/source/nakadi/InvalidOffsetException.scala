@@ -9,6 +9,6 @@ package org.zalando.znap.source.nakadi
 
 class InvalidOffsetException(val partition: String,
                              val offset: String,
-                             val message: String) extends Exception {
+                             val message: String) extends Exception(message) {
 
 }

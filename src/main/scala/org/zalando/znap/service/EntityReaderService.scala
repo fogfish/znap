@@ -10,7 +10,7 @@ package org.zalando.znap.service
 import akka.actor.{ActorRef, ActorSystem}
 import akka.util.Timeout
 import org.zalando.znap._
-import org.zalando.znap.restapi.{EntityReaders}
+import org.zalando.znap.restapi.EntityReaders
 
 import scala.concurrent.Future
 
@@ -19,19 +19,19 @@ class EntityReaderService(actorRoot: ActorRef) {
   import akka.pattern.ask
   import scala.concurrent.duration._
 
-  def getEntity(pipelineId: PipelineId, key: String)
+  def getEntity(targetId: TargetId, key: String)
                (implicit actorSystem: ActorSystem): Future[GetEntityCommandResult] = {
     implicit val ec = actorSystem.dispatcher
-    getActor(actorSystem, pipelineId).flatMap { ref =>
+    getActor(actorSystem, targetId).flatMap { ref =>
       implicit val askTimeout = Timeout(10.seconds)
       ref.ask(GetEntityCommand(key)).mapTo[GetEntityCommandResult]
     }
   }
 
-  private def getActor(actorSystem: ActorSystem, pipelineId: PipelineId): Future[ActorRef] = {
+  private def getActor(actorSystem: ActorSystem, targetId: TargetId): Future[ActorRef] = {
     implicit val resolveTimeout = 10.seconds
     val entityReaderSelection = actorSystem.actorSelection(
-      actorRoot.path / EntityReaders.name / pipelineId
+      actorRoot.path / EntityReaders.name / targetId
     )
     entityReaderSelection.resolveOne(resolveTimeout)
   }

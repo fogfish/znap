@@ -13,13 +13,13 @@ import akka.actor.{Actor, ActorLogging, Props}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.GetItemOutcome
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
-import org.zalando.znap.PipelineId
+import org.zalando.znap.TargetId
 import org.zalando.znap.config.{Config, DynamoDBDestination}
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.service.EntityReaderService
 import org.zalando.znap.utils.{Compressor, NoUnexpectedMessages}
 
-class DynamoDBEntityReader(pipelineId: PipelineId,
+class DynamoDBEntityReader(targetId: TargetId,
                            client: AmazonDynamoDBClient,
                            dynamoDBDestination: DynamoDBDestination) extends Actor with NoUnexpectedMessages with ActorLogging with Instrumented {
   import EntityReaderService._
@@ -27,7 +27,7 @@ class DynamoDBEntityReader(pipelineId: PipelineId,
 //  private val dynamoDB = new DynamoDB(client)
 //  private val table = dynamoDB.getTable(dynamoDBDestination.tableName)
 
-  private val timer = metrics.timer(s"get-entity-dynamo-$pipelineId")
+  private val timer = metrics.timer(s"get-entity-dynamo-$targetId")
 
   override def receive: Receive = {
     case GetEntityCommand(key) =>
@@ -70,16 +70,14 @@ class DynamoDBEntityReader(pipelineId: PipelineId,
       case e: com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException =>
         log.warning(s"${e.getMessage}, retrying in ")
         ProvisionedThroughputExceeded
-      case e =>
-        throw e
     }
   }
 }
 
 object DynamoDBEntityReader {
-  def props(pipelineId: PipelineId,
+  def props(targetId: TargetId,
             client: AmazonDynamoDBClient,
             dynamoDBDestination: DynamoDBDestination): Props = {
-    Props(classOf[DynamoDBEntityReader], pipelineId, client, dynamoDBDestination)
+    Props(classOf[DynamoDBEntityReader], targetId, client, dynamoDBDestination)
   }
 }

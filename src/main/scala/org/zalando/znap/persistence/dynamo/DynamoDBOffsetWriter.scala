@@ -9,7 +9,7 @@ package org.zalando.znap.persistence.dynamo
 
 import com.amazonaws.services.dynamodbv2.document.{DynamoDB, Item, TableWriteItems}
 import org.slf4j.LoggerFactory
-import org.zalando.znap.config.{Config, DynamoDBOffsetPersistence, SnapshotPipeline}
+import org.zalando.znap.config.{Config, DynamoDBOffsetPersistence, SnapshotTarget}
 import org.zalando.znap.persistence.OffsetWriterSync
 import org.zalando.znap.source.nakadi.objects.Cursor
 

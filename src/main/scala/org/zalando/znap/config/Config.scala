@@ -109,10 +109,16 @@ object Config {
       .toList.map(co => readSnapshotPipeline(co.toConfig))
 
     // Check ids uniqueness.
-    val allIds = pipelines.map(_.id)
-    allIds.groupBy(x => x).foreach { case (id, lst) =>
+    val allPipelineIds = pipelines.map(_.id)
+    allPipelineIds.groupBy(x => x).foreach { case (id, lst) =>
       if (lst.size > 1) {
         throw new Exception(s"Pipeline id $id is not unique")
+      }
+    }
+    val allTargetIds = pipelines.flatMap(_.targets.map(_.id))
+    allTargetIds.groupBy(x => x).foreach { case (id, lst) =>
+      if (lst.size > 1) {
+        throw new Exception(s"Target id $id is not unique")
       }
     }
 
@@ -136,30 +142,53 @@ object Config {
           val compress = Try(sourceConfig.getBoolean("compress")).toOption.getOrElse(true)
 
           val eventType = sourceConfig.getString("event-type")
-          val filter = Try(sourceConfig.getObject("filter")) match {
-            case Success(filterObject) =>
-              val filterConfig = filterObject.toConfig
-              if (filterConfig.entrySet().size() != 1) {
-                throw new Exception("Filter can contain only one field")
-              }
-
-              val entry = filterConfig.entrySet().head
-              val field = entry.getKey
-              val values = filterConfig.getStringList(field).toSet
-              Some(SourceFilter(field, values))
-
-            case Failure(_: ConfigException.Missing) =>
-              None
-
-            case Failure(ex) =>
-              throw ex
-          }
-          NakadiSource(nakadiURI, eventType, batchLimit, compress, filter)
+          NakadiSource(nakadiURI, eventType, batchLimit, compress)
       }
     }
 
+    val targets = configObject.getObjectList("targets").toList.map(o => readSnapshotTarget(o.toConfig))
+
+    val offsetPersistence = {
+      val offsetPersistenceConfig = configObject.getObject("offset-persistence").toConfig
+      offsetPersistenceConfig.getString("type") match {
+        case "dynamodb" =>
+          val uriBuilder = new URIBuilder(offsetPersistenceConfig.getString("url"))
+          uriBuilder.setPort(resolvePort(uriBuilder.getScheme, uriBuilder.getPort))
+
+          val tableName = offsetPersistenceConfig.getString("table-name")
+          DynamoDBOffsetPersistence(uriBuilder.build(), tableName)
+      }
+    }
+
+    SnapshotPipeline(id, source, targets, offsetPersistence)
+  }
+
+  private def readSnapshotTarget(targetConfig: TypesafeConfig): SnapshotTarget = {
+    val id = targetConfig.getString("id")
+
+    val filter = Try(targetConfig.getObject("filter")) match {
+      case Success(filterObject) =>
+        val filterConfig = filterObject.toConfig
+        if (filterConfig.entrySet().size() != 1) {
+          throw new Exception("Filter can contain only one field")
+        }
+
+        val entry = filterConfig.entrySet().head
+        val field = entry.getKey
+        val values = filterConfig.getStringList(field).toSet
+        Some(SourceFilter(field, values))
+
+      case Failure(_: ConfigException.Missing) =>
+        None
+
+      case Failure(ex) =>
+        throw ex
+    }
+
+    val key = targetConfig.getString("key").split('.').toList
+
     val destination = {
-      val destConfig = configObject.getObject("destination").toConfig
+      val destConfig = targetConfig.getObject("destination").toConfig
       destConfig.getString("type") match {
         case "dynamodb" =>
           val uriBuilder = new URIBuilder(destConfig.getString("url"))
@@ -172,7 +201,7 @@ object Config {
     }
 
     val signalling = {
-      Try(configObject.getObject("signalling")) match {
+      Try(targetConfig.getObject("signalling")) match {
         case Success(signallingObject) =>
           val signallingConfig = signallingObject.toConfig
           signallingConfig.getString("type") match {
@@ -197,7 +226,7 @@ object Config {
     }
 
     val dumping = {
-      val dumpingConfig = configObject.getObject("dumping").toConfig
+      val dumpingConfig = targetConfig.getObject("dumping").toConfig
       Try(dumpingConfig.getString("type")) match {
         case Success("sqs") =>
           val uri = new URI(dumpingConfig.getString("url"))
@@ -218,21 +247,7 @@ object Config {
       }
     }
 
-    val offsetPersistence = {
-      val offsetPersistenceConfig = configObject.getObject("offset-persistence").toConfig
-      offsetPersistenceConfig.getString("type") match {
-        case "dynamodb" =>
-          val uriBuilder = new URIBuilder(offsetPersistenceConfig.getString("url"))
-          uriBuilder.setPort(resolvePort(uriBuilder.getScheme, uriBuilder.getPort))
-
-          val tableName = offsetPersistenceConfig.getString("table-name")
-          DynamoDBOffsetPersistence(uriBuilder.build(), tableName)
-      }
-    }
-
-    val key = configObject.getString("key").split('.').toList
-
-    SnapshotPipeline(id, source, destination, signalling, dumping, offsetPersistence, key)
+    SnapshotTarget(id, filter, key, destination, signalling, dumping)
   }
 
   private def parsePublishTypeString(publishTypeString: String): PublishType = {

@@ -8,11 +8,11 @@
 package org.zalando.znap.dumps
 
 import akka.actor.ActorRef
-import org.zalando.znap.config.SnapshotPipeline
+import org.zalando.znap.config.SnapshotTarget
 
 class DumpTracker {
-  private var dumpUids = Map.empty[SnapshotPipeline, DumpUID]
-  private var dumpUidsReverse = Map.empty[DumpUID, SnapshotPipeline]
+  private var dumpUids = Map.empty[SnapshotTarget, DumpUID]
+  private var dumpUidsReverse = Map.empty[DumpUID, SnapshotTarget]
   private var dumpActors = Map.empty[DumpUID, ActorRef]
   private var dumpActorsReverse = Map.empty[ActorRef, DumpUID]
   private var dumpStatuses = Map.empty[DumpUID, DumpStatus]
@@ -21,9 +21,9 @@ class DumpTracker {
     dumpStatuses.getOrElse(dumpUID, UnknownDump)
   }
 
-  def dumpStarted(pipeline: SnapshotPipeline, dumpUID: DumpUID, dumpRunner: ActorRef): Unit = {
-    if (dumpUids.contains(pipeline)) {
-      throw new IllegalStateException(s"A dump for this pipeline is already running")
+  def dumpStarted(target: SnapshotTarget, dumpUID: DumpUID, dumpRunner: ActorRef): Unit = {
+    if (dumpUids.contains(target)) {
+      throw new IllegalStateException(s"A dump for this target is already running")
     } else if (dumpActorsReverse.contains(dumpRunner)) {
       throw new IllegalStateException(s"A dump with this runner is already running")
     } else if (dumpUidsReverse.contains(dumpUID)) {
@@ -33,15 +33,15 @@ class DumpTracker {
     } else {
       assert(!dumpActors.contains(dumpUID))
 
-      dumpUids += pipeline -> dumpUID
-      dumpUidsReverse += dumpUID -> pipeline
+      dumpUids += target -> dumpUID
+      dumpUidsReverse += dumpUID -> target
       dumpActors += dumpUID -> dumpRunner
       dumpActorsReverse += dumpRunner -> dumpUID
       dumpStatuses += dumpUID -> DumpRunning
     }
   }
 
-  def getDumpUidIfRunning(pipeline: SnapshotPipeline): Option[DumpUID] = {
+  def getDumpUidIfRunning(pipeline: SnapshotTarget): Option[DumpUID] = {
     dumpUids.get(pipeline)
   }
 

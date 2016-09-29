@@ -108,7 +108,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     sources.map { case (partitionId, source) =>
       val pipelineUniqueId = UUID.randomUUID().toString
 
-      val filterByEventClassStep = buildFilterByEventClassStep(snapshotPipeline.source)
+//      val filterByEventClassStep = buildFilterByEventClassStep(snapshotPipeline.source)
       val dataWriteStep = buildDataWriteStep(snapshotPipeline)
       val signalStep = buildSignalStep(snapshotPipeline)
       val offsetWriteStep = buildOffsetWriteStep(snapshotPipeline)
@@ -125,7 +125,6 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
 
       val graph = source
         .map(b => (b, ProcessingContext()))
-        .via(filterByEventClassStep)
         .via(dataWriteStep)
         .via(signalStep)
         .via(offsetWriteStep)
@@ -169,72 +168,65 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       case nakadiSource: NakadiSource =>
         val nakadiPublisher = new NakadiPublisher(nakadiSource, tokens, offsetReader)(actorSystem)
         nakadiPublisher.createSources()
-
-      case EmptySource =>
-        throw new Exception("EmptySource is not supported")
-    }
-  }
-
-  private def buildFilterByEventClassStep(source: SnapshotSource): FlowType = {
-    source match {
-      case nakadiSource: NakadiSource =>
-        Flow[(EventBatch, ProcessingContext)].map { case (eventBatch, processingContext) =>
-          val timeStart = getTime
-          val filteredEventBatch = nakadiSource.filter match {
-            case Some(SourceFilter(filterField, filterValues)) =>
-              val filteredEvents = eventBatch.events.map { eventList =>
-                eventList.filter(e => filterValues.contains(e.get(filterField).asText()))
-              }
-              EventBatch(eventBatch.cursor, filteredEvents)
-
-            case _ =>
-              eventBatch
-          }
-          val timeFinish = getTime
-
-          (filteredEventBatch,
-            processingContext.saveStageTime("filter", timeStart, timeFinish))
-        }.async
-
-      case EmptySource =>
-        throw new Exception("EmptySource is not supported")
     }
   }
 
   private def buildDataWriteStep(snapshotPipeline: SnapshotPipeline): FlowType = {
-    val (eventsWriter, dispatcherAttributes, writerName) = snapshotPipeline.destination match {
-      case dynamoDBDestination: DynamoDBDestination =>
-        val uri = dynamoDBDestination.uri.toString
-        (new DynamoDBEventsWriter(snapshotPipeline, getDynamoDB(uri)),
-          ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
-          "dynamo")
+    val flows = snapshotPipeline.targets.map { target =>
+      val (eventsWriter, dispatcherAttributes, writerName) = target.destination match {
+        case dynamoDBDestination: DynamoDBDestination =>
+          val uri = dynamoDBDestination.uri.toString
+          (new DynamoDBEventsWriter(target, getDynamoDB(uri)),
+            ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
+            "dynamo")
 
-      case EmptyDestination =>
-        throw new Exception("EmptyDestination is not supported")
-    }
+        case EmptyDestination =>
+          throw new Exception("EmptyDestination is not supported")
+      }
+      eventsWriter.init()
 
-    eventsWriter.init()
+      Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val filteredEvents = target.filter match {
+        case Some(SourceFilter(filterField, filterValues)) =>
+          val filteredEvents = batch.events.map { eventList =>
+            eventList.filter(e => filterValues.contains(e.get(filterField).asText()))
+          }
+          filteredEvents.getOrElse(Nil)
 
-    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+        case _ =>
+          batch.events.getOrElse(Nil)
+      }
+
       val timeStart = getTime
-      eventsWriter.write(batch.events.getOrElse(Nil))
-      val timeFinish = getTime
-      (batch, processingContext.saveStageTime(s"write-$writerName", timeStart, timeFinish))
+        eventsWriter.write(filteredEvents)
+        val timeFinish = getTime
+        (batch, processingContext.saveStageTime(s"write-$writerName", timeStart, timeFinish))
+      }
+        .addAttributes(dispatcherAttributes)
+        .async
     }
-      .addAttributes(dispatcherAttributes)
-      .async
+
+    flows.reduceLeft[FlowType] {
+      case (x, y) => x.via(y)
+    }
   }
 
   private def buildSignalStep(snapshotPipeline: SnapshotPipeline): FlowType = {
-    snapshotPipeline.signalling match {
-      case Some(sqsSignalling: SqsSignalling) =>
-        buildSqsSignalStep(sqsSignalling, snapshotPipeline.key)
+    val flows = snapshotPipeline.targets.map { target =>
+      target.signalling match {
+        case Some(sqsSignalling: SqsSignalling) =>
+          buildSqsSignalStep(sqsSignalling, target.key)
 
-      case Some(kinesisSignalling: KinesisSignalling) =>
-        buildKinesisSignalStep(kinesisSignalling, snapshotPipeline.key)
+        case Some(kinesisSignalling: KinesisSignalling) =>
+          buildKinesisSignalStep(kinesisSignalling, target.key)
 
-      case None =>
-        Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
+        case None =>
+          Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
+      }
+    }
+
+    flows.reduceLeft[FlowType] {
+      case (x, y) => x.via(y)
     }
   }
 
