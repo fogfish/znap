@@ -132,6 +132,9 @@ object Config {
             nakadiURIBuilder.build()
           }
 
+          val batchLimit = Try(sourceConfig.getLong("batch-limit")).toOption
+          val compress = Try(sourceConfig.getBoolean("compress")).toOption.getOrElse(true)
+
           val eventType = sourceConfig.getString("event-type")
           val filter = Try(sourceConfig.getObject("filter")) match {
             case Success(filterObject) =>
@@ -151,7 +154,7 @@ object Config {
             case Failure(ex) =>
               throw ex
           }
-          NakadiSource(nakadiURI, eventType, filter)
+          NakadiSource(nakadiURI, eventType, batchLimit, compress, filter)
       }
     }
 
@@ -163,7 +166,8 @@ object Config {
           uriBuilder.setPort(resolvePort(uriBuilder.getScheme, uriBuilder.getPort))
 
           val tableName = destConfig.getString("table-name")
-          DynamoDBDestination(uriBuilder.build(), tableName)
+          val compress = destConfig.getBoolean("compress")
+          DynamoDBDestination(uriBuilder.build(), tableName, compress)
       }
     }
 
@@ -227,9 +231,8 @@ object Config {
     }
 
     val key = configObject.getString("key").split('.').toList
-    val compress = configObject.getBoolean("compress")
 
-    SnapshotPipeline(id, source, destination, signalling, dumping, offsetPersistence, key, compress)
+    SnapshotPipeline(id, source, destination, signalling, dumping, offsetPersistence, key)
   }
 
   private def parsePublishTypeString(publishTypeString: String): PublishType = {

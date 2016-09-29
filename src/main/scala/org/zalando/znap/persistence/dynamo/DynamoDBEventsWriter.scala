@@ -38,7 +38,7 @@ class DynamoDBEventsWriter(snapshotPipeline: SnapshotPipeline,
         .withPrimaryKey(Config.DynamoDB.KVTables.Attributes.Key, key)
 
       val jsonString = Json.write(e)
-      if (snapshotPipeline.compress) {
+      if (dynamoDBDestination.compress) {
         item.withBinary(Config.DynamoDB.KVTables.Attributes.Value, Compressor.compress(jsonString))
       } else {
         item.withString(Config.DynamoDB.KVTables.Attributes.Value, jsonString)

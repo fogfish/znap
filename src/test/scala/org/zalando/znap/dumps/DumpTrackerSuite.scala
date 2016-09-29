@@ -21,9 +21,9 @@ class DumpTrackerSuite extends FunSpec with Matchers {
   private val dumpUid2 = "x2"
 
   private val pipeline1 = SnapshotPipeline(
-    "id1", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil, compress = false)
+    "id1", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil)
   private val pipeline2 = SnapshotPipeline(
-    "id2", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil, compress = false)
+    "id2", EmptySource, EmptyDestination, None, None, EmptyOffsetPersistence, Nil)
 
   it("should not return status for an unknown dump") {
     val dt = new DumpTracker
