@@ -150,7 +150,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   }
 
   private def createPartitionResponseSource(partition: String, offset: String): Source[HttpResponse, NotUsed] = {
-    val uri = s"/event-types/${nakadiSource.eventType}/events" + "?stream_timeout=0"
+    val uri = s"/event-types/${nakadiSource.eventType}/events" + "?stream_timeout=0&batch_limit=100"
 
     val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
     val xNakadiCursor = new XNakadiCursors(partition, offset)
