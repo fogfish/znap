@@ -5,11 +5,10 @@ import java.util.concurrent.TimeoutException
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.http.javadsl.model.headers.AcceptEncoding
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.{Authorization, HttpEncoding, HttpEncodings, OAuth2BearerToken}
+import akka.http.scaladsl.model.headers.{Authorization, HttpEncodings, OAuth2BearerToken, `Accept-Encoding`, `Content-Encoding`}
 import akka.stream.scaladsl.{Framing, Source}
 import akka.stream.{ActorMaterializerSettings, _}
 import akka.util.ByteString
@@ -150,12 +149,16 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   }
 
   private def createPartitionResponseSource(partition: String, offset: String): Source[HttpResponse, NotUsed] = {
-    val uri = s"/event-types/${nakadiSource.eventType}/events" + "?stream_timeout=0&batch_limit=100"
+    val uri = s"/event-types/${nakadiSource.eventType}/events" + "?stream_timeout=0" +
+      nakadiSource.batchLimit.map(bl => s"&batch_limit=$bl").getOrElse("")
 
     val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
     val xNakadiCursor = new XNakadiCursors(partition, offset)
-    val acceptEncoding = AcceptEncoding.create(HttpEncodings.gzip)
-    val headers = List(authorizationHeader, xNakadiCursor, acceptEncoding)
+    val acceptEncoding = `Accept-Encoding`(HttpEncodings.gzip)
+    var headers = List(authorizationHeader, xNakadiCursor)
+    if (nakadiSource.compress) {
+      headers = headers :+ acceptEncoding
+    }
 
     val nakadiConnectionFlow =
       if (nakadiSource.uri.getScheme.equals("https")) {
@@ -169,10 +172,20 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   }
 
   private def processNormalResponse(response: HttpResponse): Source[EventBatch, Any] = {
-    response.entity.withSizeLimit(Config.HttpStreamingMaxSize)
+    val result = response.entity.withSizeLimit(Config.HttpStreamingMaxSize)
       .dataBytes
-      .via(Gzip.decoderFlow)
 
+    val decodedResult =
+      response.header[`Content-Encoding`] match {
+        case Some(`Content-Encoding`(encodings)) if encodings.contains(HttpEncodings.gzip) =>
+          result.via(Gzip.decoderFlow)
+
+        case _ =>
+          result
+      }
+
+
+    decodedResult
       // Coalesce chunks into a line.
       .via(Framing.delimiter(ByteString("\n"), Int.MaxValue))
 

@@ -15,6 +15,8 @@ sealed trait SnapshotSource
 case object EmptySource extends SnapshotSource
 final case class NakadiSource(uri: URI,
                               eventType: String,
+                              batchLimit: Option[Long],
+                              compress: Boolean,
                               filter: Option[SourceFilter]) extends SnapshotSource
 
 final case class SourceFilter(field: String,
@@ -24,7 +26,8 @@ final case class SourceFilter(field: String,
 sealed trait SnapshotDestination
 case object EmptyDestination extends SnapshotDestination
 final case class DynamoDBDestination(uri: URI,
-                                     tableName: String) extends SnapshotDestination
+                                     tableName: String,
+                                     compress: Boolean) extends SnapshotDestination
 
 
 sealed trait Signalling
@@ -61,5 +64,4 @@ final case class SnapshotPipeline(id: PipelineId,
                                   signalling: Option[Signalling],
                                   dumping: Option[Dumping],
                                   offsetPersistence: OffsetPersistence,
-                                  key: List[String],
-                                  compress: Boolean)
+                                  key: List[String])
