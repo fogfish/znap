@@ -17,6 +17,7 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
+import com.fasterxml.jackson.databind.JsonNode
 import nl.grons.metrics.scala.Meter
 import org.slf4j.LoggerFactory
 import org.zalando.znap.{PartitionId, PipelineId}
@@ -186,16 +187,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       eventsWriter.init()
 
       Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
-      val filteredEvents = target.filter match {
-        case Some(SourceFilter(filterField, filterValues)) =>
-          val filteredEvents = batch.events.map { eventList =>
-            eventList.filter(e => filterValues.contains(e.get(filterField).asText()))
-          }
-          filteredEvents.getOrElse(Nil)
-
-        case _ =>
-          batch.events.getOrElse(Nil)
-      }
+      val filteredEvents = filterEvents(target, batch)
 
       val timeStart = getTime
         eventsWriter.write(filteredEvents)
@@ -211,14 +203,28 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     }
   }
 
+  def filterEvents(target: SnapshotTarget, batch: EventBatch): List[JsonNode] = {
+    val filteredEvents = target.filter match {
+      case Some(SourceFilter(filterField, filterValues)) =>
+        val filteredEvents = batch.events.map { eventList =>
+          eventList.filter(e => filterValues.contains(e.get(filterField).asText()))
+        }
+        filteredEvents.getOrElse(Nil)
+
+      case _ =>
+        batch.events.getOrElse(Nil)
+    }
+    filteredEvents
+  }
+
   private def buildSignalStep(snapshotPipeline: SnapshotPipeline): FlowType = {
     val flows = snapshotPipeline.targets.map { target =>
       target.signalling match {
         case Some(sqsSignalling: SqsSignalling) =>
-          buildSqsSignalStep(sqsSignalling, target.key)
+          buildSqsSignalStep(target, sqsSignalling, target.key)
 
-        case Some(kinesisSignalling: KinesisSignalling) =>
-          buildKinesisSignalStep(kinesisSignalling, target.key)
+//        case Some(kinesisSignalling: KinesisSignalling) =>
+//          buildKinesisSignalStep(kinesisSignalling, target.key)
 
         case None =>
           Flow[(EventBatch, ProcessingContext)].map(x => x) // empty
@@ -230,12 +236,14 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     }
   }
 
-  private def buildSqsSignalStep(sqsSignalling: SqsSignalling, keyPath: List[String]): FlowType = {
+  private def buildSqsSignalStep(target: SnapshotTarget, sqsSignalling: SqsSignalling, keyPath: List[String]): FlowType = {
     val signaller = new SqsSignaller(sqsSignalling, sqsClient)
 
     Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+      val filteredEvents = filterEvents(target, batch)
+
       val timeStart = getTime
-      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
+      val valuesToSignal = filteredEvents.map { event =>
         sqsSignalling.publishType match {
           case PublishType.KeysOnly =>
             Json.getKey(keyPath, event)
@@ -255,32 +263,32 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       .async
   }
 
-  private def buildKinesisSignalStep(kinesisSignalling: KinesisSignalling, keyPath: List[String]): FlowType = {
-    val signaller = new KinesisSignaller(getKinesisProducer(kinesisSignalling.amazonRegion), kinesisSignalling.stream)
-
-    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
-      val timeStart = getTime
-      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
-        val key = Json.getKey(keyPath, event)
-        val value = kinesisSignalling.publishType match {
-          case PublishType.KeysOnly =>
-            key.getBytes(Encoding)
-
-          case PublishType.EventsUncompressed =>
-            Json.write(event).getBytes(Encoding)
-
-          case PublishType.EventsCompressed =>
-            Compressor.compress(Json.write(event))
-        }
-        (key, value)
-      }
-      signaller.signal(valuesToSignal)
-      val timeFinish = getTime
-      (batch, processingContext.saveStageTime("signal-kinesis", timeStart, timeFinish))
-    }
-      .addAttributes(ActorAttributes.dispatcher(Config.Akka.KinesisDispatcher))
-      .async
-  }
+//  private def buildKinesisSignalStep(kinesisSignalling: KinesisSignalling, keyPath: List[String]): FlowType = {
+//    val signaller = new KinesisSignaller(getKinesisProducer(kinesisSignalling.amazonRegion), kinesisSignalling.stream)
+//
+//    Flow[(EventBatch, ProcessingContext)].map { case (batch, processingContext) =>
+//      val timeStart = getTime
+//      val valuesToSignal = batch.events.getOrElse(Nil).map { event =>
+//        val key = Json.getKey(keyPath, event)
+//        val value = kinesisSignalling.publishType match {
+//          case PublishType.KeysOnly =>
+//            key.getBytes(Encoding)
+//
+//          case PublishType.EventsUncompressed =>
+//            Json.write(event).getBytes(Encoding)
+//
+//          case PublishType.EventsCompressed =>
+//            Compressor.compress(Json.write(event))
+//        }
+//        (key, value)
+//      }
+//      signaller.signal(valuesToSignal)
+//      val timeFinish = getTime
+//      (batch, processingContext.saveStageTime("signal-kinesis", timeStart, timeFinish))
+//    }
+//      .addAttributes(ActorAttributes.dispatcher(Config.Akka.KinesisDispatcher))
+//      .async
+//  }
 
   private def buildOffsetWriteStep(snapshotPipeline: SnapshotPipeline): FlowType = {
     val (props, dispatcherAttributes, writerName) = snapshotPipeline.offsetPersistence match {
