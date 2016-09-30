@@ -6,9 +6,9 @@ import java.util.concurrent.TimeoutException
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.Gzip
+import akka.http.scaladsl.coding.Deflate
 import akka.http.scaladsl.model._
-import akka.http.scaladsl.model.headers.{Authorization, HttpEncodings, OAuth2BearerToken, `Accept-Encoding`, `Content-Encoding`}
+import akka.http.scaladsl.model.headers._
 import akka.stream.scaladsl.{Framing, Source}
 import akka.stream.{ActorMaterializerSettings, _}
 import akka.util.ByteString
@@ -16,9 +16,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import org.slf4j.LoggerFactory
 import org.zalando.znap.PartitionId
 import org.zalando.znap.config.{Config, NakadiSource}
-import org.zalando.znap.source.nakadi.objects.{EventBatch, NakadiPartition}
 import org.zalando.znap.objects.Partition
 import org.zalando.znap.persistence.OffsetReaderSync
+import org.zalando.znap.source.nakadi.objects.EventBatch
 import org.zalando.znap.utils._
 
 import scala.concurrent.{Await, Future}
@@ -29,7 +29,6 @@ class NakadiPublisher(nakadiSource: NakadiSource,
                       offsetReader: OffsetReaderSync)
                      (implicit actorSystem: ActorSystem) {
   import NakadiPublisher._
-  import org.zalando.znap.utils.RichStream._
 
   private val logger = LoggerFactory.getLogger(classOf[NakadiPublisher])
   private implicit val materializer = ActorMaterializer(ActorMaterializerSettings(actorSystem))
@@ -154,7 +153,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
 
     val authorizationHeader = new Authorization(OAuth2BearerToken(tokens.get()))
     val xNakadiCursor = new XNakadiCursors(partition, offset)
-    val acceptEncoding = `Accept-Encoding`(HttpEncodings.gzip)
+    val acceptEncoding = `Accept-Encoding`(HttpEncodings.deflate)
     var headers = List(authorizationHeader, xNakadiCursor)
     if (nakadiSource.compress) {
       headers = headers :+ acceptEncoding
@@ -175,15 +174,7 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     val result = response.entity.withSizeLimit(Config.HttpStreamingMaxSize)
       .dataBytes
 
-    val decodedResult =
-      response.header[`Content-Encoding`] match {
-        case Some(`Content-Encoding`(encodings)) if encodings.contains(HttpEncodings.gzip) =>
-          result.via(Gzip.decoderFlow)
-
-        case _ =>
-          result
-      }
-
+    val decodedResult = decodeIfNeeded(result, response.header[`Content-Encoding`])
 
     decodedResult
       // Coalesce chunks into a line.
@@ -194,10 +185,11 @@ class NakadiPublisher(nakadiSource: NakadiSource,
 
   private def processPreconditionFailedResponse(partition: String, offset: String, response: HttpResponse): Source[Nothing, Any] = {
     val offsetUnavailableRegex = s"""^offset\\s\\d+\\sfor\\spartition\\s$partition\\sis\\sunavailable$$""".r
-    response
-      .entity.dataBytes.via(Gzip.decoderFlow)
+    val result = response.entity.dataBytes
 
-      .fold("")(_ + " " + _.utf8String).map { content =>
+    val decodedResult = decodeIfNeeded(result, response.header[`Content-Encoding`])
+
+    decodedResult.fold("")(_ + " " + _.utf8String).map { content =>
       val preconditionFailedContent = Json.read[PreconditionFailedContent](content)
       assert(preconditionFailedContent.status == StatusCodes.PreconditionFailed.intValue)
 
@@ -211,10 +203,11 @@ class NakadiPublisher(nakadiSource: NakadiSource,
   }
 
   private def processUnknownResponse(partition: String, unknownResponse: HttpResponse): Source[Nothing, Any] = {
-    unknownResponse
-      .entity.dataBytes.via(Gzip.decoderFlow)
+    val result = unknownResponse.entity.dataBytes
 
-      .map { bs =>
+    val decodedResult = decodeIfNeeded(result, unknownResponse.header[`Content-Encoding`])
+
+    decodedResult.map { bs =>
       val msg = s"Unknown response on getting events from partition $partition: $unknownResponse ${bs.utf8String}"
       throw new Exception(msg)
     }
@@ -271,6 +264,18 @@ object NakadiPublisher {
 
     override def apply(v1: Throwable): Graph[SourceShape[EventBatch], NotUsed] = {
       getStream()
+    }
+  }
+
+
+  private def decodeIfNeeded(dataBytes: Source[ByteString, Any],
+                             contentEncodingHeader: Option[`Content-Encoding`]): Source[ByteString, Any] = {
+    contentEncodingHeader match {
+      case Some(`Content-Encoding`(encodings)) if encodings.contains(HttpEncodings.deflate) =>
+        dataBytes.via(Deflate.decoderFlow)
+
+      case _ =>
+        dataBytes
     }
   }
 }
