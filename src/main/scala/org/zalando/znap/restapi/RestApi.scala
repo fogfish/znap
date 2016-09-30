@@ -278,11 +278,8 @@ object RestApi {
 
     override def tapply(f: (Unit) => Route): Route = {
       ctx => {
-        val timerCtx = timer.timerContext()
-        val started = System.nanoTime()
-        f()(ctx).map { result =>
-          timerCtx.stop()
-          result
+        timer.timeFuture {
+          f()(ctx)
         }
       }
     }
