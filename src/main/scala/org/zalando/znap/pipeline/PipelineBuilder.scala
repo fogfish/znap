@@ -18,14 +18,11 @@ import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.kinesis.producer.{KinesisProducer, KinesisProducerConfiguration}
 import com.amazonaws.services.sqs.AmazonSQSClient
 import com.fasterxml.jackson.databind.JsonNode
-import nl.grons.metrics.scala.Meter
-import org.slf4j.LoggerFactory
 import org.zalando.znap.{PartitionId, PipelineId}
 import org.zalando.znap.config._
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.persistence.OffsetReaderSync
 import org.zalando.znap.persistence.dynamo.{DynamoDBEventsWriter, DynamoDBOffsetReader, DynamoDBOffsetWriter}
-import org.zalando.znap.signalling.kinesis.KinesisSignaller
 import org.zalando.znap.signalling.sqs.SqsSignaller
 import org.zalando.znap.source.nakadi.objects.EventBatch
 import org.zalando.znap.source.nakadi.{NakadiPublisher, NakadiTokens}
@@ -42,61 +39,41 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
   private lazy val dynamoExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.DynamoDBDispatcher)
 //  private lazy val sqsExecutionContext = actorSystem.dispatchers.lookup(Config.Akka.SqsDispatcher)
 
-  private var dynamoDBMap = Map.empty[String, DynamoDB]
-  private def getDynamoDB(uri: String): DynamoDB = {
-    dynamoDBMap.get(uri) match {
-      case Some(dynamoDB) =>
-        dynamoDB
-      case _ =>
-        val dynamoDBClient = new AmazonDynamoDBClient()
-        dynamoDBClient.withEndpoint(uri)
-        val dynamoDB = new DynamoDB(dynamoDBClient)
-        dynamoDBMap = dynamoDBMap + (uri -> dynamoDB)
-        dynamoDB
-    }
-  }
-
   private lazy val sqsClient = new AmazonSQSClient()
 
-  private var kinesisProducerMap = Map.empty[String, KinesisProducer]
-  private def getKinesisProducer(amazonRegion: String): KinesisProducer = {
-    kinesisProducerMap.get(amazonRegion) match {
-      case Some(kinesisProducer) =>
-        kinesisProducer
-      case _ =>
-        val config = new KinesisProducerConfiguration
-        config.setRegion(amazonRegion)
-        val kinesisProducer = new KinesisProducer(config)
-        kinesisProducerMap += amazonRegion -> kinesisProducer
-        kinesisProducer
-    }
-  }
+  private val dynamoDBs = new Cached({
+    uri: String =>
+      val dynamoDBClient = new AmazonDynamoDBClient()
+      dynamoDBClient.withEndpoint(uri)
+      new DynamoDB(dynamoDBClient)
+  })
 
-  private var batchProcessingFinishedMeters = Map.empty[String, Meter]
-  private def getBatchProcessingFinishedMeter(pipelineId: PipelineId): Meter = {
-    batchProcessingFinishedMeters.get(pipelineId) match {
-      case Some(meter) =>
-        meter
-      case _ =>
-        val meter = metrics.meter(s"batches-processed-$pipelineId")
-        batchProcessingFinishedMeters += pipelineId -> meter
-        meter
-    }
-  }
-  private var eventProcessingFinishedMeters = Map.empty[String, Meter]
-  private def getEventProcessingFinishedMeter(pipelineId: PipelineId): Meter = {
-    eventProcessingFinishedMeters.get(pipelineId) match {
-      case Some(meter) =>
-        meter
-      case _ =>
-        val meter = metrics.meter(s"events-processed-$pipelineId")
-        eventProcessingFinishedMeters += pipelineId -> meter
-        meter
-    }
-  }
+//  private val kinesisProducers = new Cached({
+//    amazonRegion: String =>
+//      val config = new KinesisProducerConfiguration
+//      config.setRegion(amazonRegion)
+//      new KinesisProducer(config)
+//  })
 
-  private val dynamoWriteTimer = metrics.timer(s"dynamo-write")
-  private val sqsSignalTimer = metrics.timer(s"sqs-signal")
+
+  private val batchProcessingFinishedMeters = new Cached({
+    pipelineId: PipelineId => metrics.meter(s"batches-processed-$pipelineId")
+  })
+
+  private val eventProcessingFinishedMeters = new Cached({
+    pipelineId: PipelineId => metrics.meter(s"events-processed-$pipelineId")
+  })
+
+  private val batchesInFlightCounters = new Cached({
+    pipelineId: PipelineId => metrics.counter(s"batches-in-flight-$pipelineId")
+  })
+
+  private val eventsInFlightCounters = new Cached({
+    pipelineId: PipelineId => metrics.counter(s"events-in-flight-$pipelineId")
+  })
+
+  private val dynamoWriteTimer = metrics.timer("dynamo-write")
+  private val sqsSignalTimer = metrics.timer("sqs-signal")
 
   /**
     * Build a pipeline in a form of Akka Streams graph.
@@ -114,7 +91,8 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       val dataWriteStep = buildDataWriteStep(snapshotPipeline)
       val signalStep = buildSignalStep(snapshotPipeline)
       val offsetWriteStep = buildOffsetWriteStep(snapshotPipeline)
-      val metricsStep = buildMetricsStep(snapshotPipeline)
+      val metricsStartStep = buildMetricsStartStep(snapshotPipeline)
+      val metricsFinishStep = buildMetricsFinishStep(snapshotPipeline)
 
       val sink = Sink.ignore
 //      val sink = Sink.foreach(println)
@@ -126,10 +104,11 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
 //      }
 
       val graph = source
+        .via(metricsStartStep)
         .via(dataWriteStep)
         .via(signalStep)
         .via(offsetWriteStep)
-        .via(metricsStep)
+        .via(metricsFinishStep)
         .viaMat(KillSwitches.single)(Keep.right)
         .toMat(sink)(Keep.both)
         .named(s"Pipeline $id-partition$partitionId (unique ID $pipelineUniqueId)")
@@ -154,7 +133,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     val offsetReader = snapshotPipeline.offsetPersistence match {
       case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val uri = dynamoDBOffsetPersistence.uri.toString
-        new DynamoDBOffsetReader(dynamoDBOffsetPersistence, getDynamoDB(uri))(dynamoExecutionContext)
+        new DynamoDBOffsetReader(dynamoDBOffsetPersistence, dynamoDBs(uri))(dynamoExecutionContext)
 
       case EmptyOffsetPersistence  =>
         throw new Exception("EmptyDestination is not supported")
@@ -177,7 +156,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       val (eventsWriter, dispatcherAttributes, writerName) = target.destination match {
         case dynamoDBDestination: DynamoDBDestination =>
           val uri = dynamoDBDestination.uri.toString
-          (new DynamoDBEventsWriter(target, getDynamoDB(uri)),
+          (new DynamoDBEventsWriter(target, dynamoDBs(uri)),
             ActorAttributes.dispatcher(Config.Akka.DynamoDBDispatcher),
             "dynamo")
 
@@ -224,8 +203,8 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
         case Some(sqsSignalling: SqsSignalling) =>
           buildSqsSignalStep(target, sqsSignalling, target.key)
 
-//        case Some(kinesisSignalling: KinesisSignalling) =>
-//          buildKinesisSignalStep(kinesisSignalling, target.key)
+        case Some(kinesisSignalling: KinesisSignalling) =>
+          ???
 
         case None =>
           Flow[EventBatch].map(x => x) // empty
@@ -270,7 +249,7 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
     val (props, dispatcherAttributes, writerName) = snapshotPipeline.offsetPersistence match {
       case dynamoDBOffsetPersistence: DynamoDBOffsetPersistence =>
         val uri = dynamoDBOffsetPersistence.uri.toString
-        val offsetWriter = new DynamoDBOffsetWriter(dynamoDBOffsetPersistence, getDynamoDB(uri))
+        val offsetWriter = new DynamoDBOffsetWriter(dynamoDBOffsetPersistence, dynamoDBs(uri))
         offsetWriter.init()
 
         val props = OffsetWriterActor.props(
@@ -295,13 +274,54 @@ private class PipelineBuilder(tokens: NakadiTokens)(actorSystem: ActorSystem) ex
       .alsoTo(branch)
   }
 
-  private def buildMetricsStep(snapshotPipeline: SnapshotPipeline): FlowType = {
-    val batchProcessingFinishedMeter = getBatchProcessingFinishedMeter(snapshotPipeline.id)
-    val eventProcessingFinishedMeter = getEventProcessingFinishedMeter(snapshotPipeline.id)
+  private def buildMetricsStartStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    val batchesInFlightCounter = batchesInFlightCounters(snapshotPipeline.id)
+    val eventsInFlightCounter = eventsInFlightCounters(snapshotPipeline.id)
     Flow[EventBatch].map { batch =>
-      batchProcessingFinishedMeter.mark()
-      eventProcessingFinishedMeter.mark(batch.events.size)
+      val batchSize = batch.events.size
+
+      batchesInFlightCounter.inc()
+      eventsInFlightCounter.inc(batchSize)
+
       batch
+    }
+  }
+
+  private def buildMetricsFinishStep(snapshotPipeline: SnapshotPipeline): FlowType = {
+    val batchProcessingFinishedMeter = batchProcessingFinishedMeters(snapshotPipeline.id)
+    val eventProcessingFinishedMeter = eventProcessingFinishedMeters(snapshotPipeline.id)
+
+    val batchesInFlightCounter = batchesInFlightCounters(snapshotPipeline.id)
+    val eventsInFlightCounter = eventsInFlightCounters(snapshotPipeline.id)
+    Flow[EventBatch].map { batch =>
+      val batchSize = batch.events.size
+
+      batchProcessingFinishedMeter.mark()
+      eventProcessingFinishedMeter.mark(batchSize)
+
+      batchesInFlightCounter.dec()
+      eventsInFlightCounter.dec(batchSize)
+
+      batch
+    }
+  }
+
+
+  private class Cached[K, V](create: K => V) {
+    private var cache = Map.empty[K, V]
+    def get(key: K): V = {
+      cache.get(key) match {
+        case Some(counter) =>
+          counter
+        case _ =>
+          val value = create(key)
+          cache += key -> value
+          value
+      }
+    }
+
+    def apply(key: K): V = {
+      get(key)
     }
   }
 }
