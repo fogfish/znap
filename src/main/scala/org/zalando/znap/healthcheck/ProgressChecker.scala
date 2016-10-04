@@ -146,13 +146,13 @@ object ProgressChecker {
     }
 
     Await.result(getPartitionsFunc(), awaitDuration).sortBy(_.partition).foreach { p =>
-      metrics.gauge(s"${pipeline.id}-${p.partition}-oldestAvailableOffset") {
+      metrics.gauge(s"oldestAvailableOffset-${pipeline.id}-${p.partition}") {
         lastValuesPerPartition_OldestAvailableOffset.getOrElse(p.partition, -1)
       }
-      metrics.gauge(s"${pipeline.id}-${p.partition}-newestAvailableOffset") {
+      metrics.gauge(s"newestAvailableOffset-${pipeline.id}-${p.partition}") {
         lastValuesPerPartition_NewestAvailableOffset.getOrElse(p.partition, -1)
       }
-      metrics.gauge(s"${pipeline.id}-${p.partition}-currentOffset") {
+      metrics.gauge(s"currentOffset-${pipeline.id}-${p.partition}") {
         lastValuesPerPartition_CurrentOffset.getOrElse(p.partition, -1)
       }
     }
