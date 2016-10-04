@@ -30,7 +30,7 @@ ENV JAVA_OPTS="\
    -Dcom.sun.management.jmxremote.local.only=false \
    -Dcom.sun.management.jmxremote.authenticate=false \
    -Dcom.sun.management.jmxremote.ssl=false \
-   -Djava.rmi.server.hostname=0.0.0.0"
+   -Djava.rmi.server.hostname='${INSTANCE_IP}'"
 
 EXPOSE 8080 9010
 
