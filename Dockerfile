@@ -25,15 +25,15 @@ ENV JAVA_OPTS="\
    -XX:MaxPermSize=128m \
    -XX:+UseParallelGC \
    -Dcom.sun.management.jmxremote \
-   -Dcom.sun.management.jmxremote.port=9010 \
-   -Dcom.sun.management.jmxremote.rmi.port=9010 \
+   -Dcom.sun.management.jmxremote.port=1099 \
+   -Dcom.sun.management.jmxremote.rmi.port=1199 \
    -Dcom.sun.management.jmxremote.local.only=false \
    -Dcom.sun.management.jmxremote.authenticate=false \
    -Dcom.sun.management.jmxremote.ssl=false \
    -Djava.net.preferIPv4Stack=true \
    -Djava.rmi.server.useLocalHostname=true"
 
-EXPOSE 8080 9010
+EXPOSE 8080 8778 1099 1199
 
 ENTRYPOINT java ${JAVA_OPTS} -Dconfig.resource=/application.conf \
            -javaagent:/jolokia.jar=port=8778,host=0.0.0.0 \
