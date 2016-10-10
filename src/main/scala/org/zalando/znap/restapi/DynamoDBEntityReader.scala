@@ -32,6 +32,7 @@ class DynamoDBEntityReader(targetId: TargetId,
   override def receive: Receive = {
     case GetEntityCommand(key) =>
       sender() ! get(key)
+      context.stop(self)
   }
 
   private def get(key: String): GetEntityCommandResult = {
