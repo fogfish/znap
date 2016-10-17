@@ -121,6 +121,8 @@ class NakadiPublisher(nakadiSource: NakadiSource,
     */
   private def createSourceForPartition0(partition: String,
                                         knownOffset: Option[String]): Source[EventBatch, NotUsed] = {
+    logger.debug(s"Creating Source for $nakadiSource, partition $partition. knownOffset used is $knownOffset")
+
     val offsetToUseF = knownOffset match {
       case Some(offset) =>
         Future.successful(offset)

@@ -9,6 +9,7 @@ package org.zalando.znap.persistence.dynamo
 
 import com.amazonaws.services.dynamodbv2.document.DynamoDB
 import com.amazonaws.services.dynamodbv2.document.spec.ScanSpec
+import org.slf4j.LoggerFactory
 import org.zalando.znap.config.{Config, DynamoDBOffsetPersistence}
 import org.zalando.znap.persistence.OffsetReaderSync
 
@@ -19,6 +20,7 @@ class DynamoDBOffsetReader(dynamoDBOffsetPersistence: DynamoDBOffsetPersistence,
                           (executionContext: ExecutionContext) extends OffsetReaderSync {
   import collection.JavaConverters._
 
+  private val logger = LoggerFactory.getLogger(classOf[DynamoDBOffsetReader])
   private implicit val ec = executionContext
 
   override def init(): Unit = {}
@@ -31,6 +33,9 @@ class DynamoDBOffsetReader(dynamoDBOffsetPersistence: DynamoDBOffsetPersistence,
       val offset = item.getString(Config.DynamoDB.KVTables.Attributes.Value)
       partition -> offset
     }.toMap
+
+    logger.debug(s"Last offsets received from table ${dynamoDBOffsetPersistence.tableName}: $offsetMap")
+
     offsetMap
   }
 }

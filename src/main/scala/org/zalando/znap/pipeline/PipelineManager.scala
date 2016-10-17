@@ -7,12 +7,14 @@
   */
 package org.zalando.znap.pipeline
 
+import java.time.ZonedDateTime
+
 import akka.actor.{Actor, ActorLogging}
 import akka.stream.{ActorMaterializer, KillSwitch}
 import org.zalando.znap.PipelineId
 import org.zalando.znap.config.Config
 import org.zalando.znap.source.nakadi.NakadiTokens
-import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils}
+import org.zalando.znap.utils.{NoUnexpectedMessages, ThrowableUtils, TimePeriodEventTracker}
 
 /**
   * Actor that supervises pipelines.
@@ -29,6 +31,11 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
   private var pipelines = Map.empty[String, RunnablePipeline]
   private var runningPipelines = Set.empty[RunnablePipeline]
   private var killSwitches = Map.empty[String, KillSwitch]
+
+  private val errorTracker = new TimePeriodEventTracker(
+    Config.Supervision.Pipelines.MaxFailures,
+    Config.Supervision.Pipelines.Period
+  )
 
   override def preStart(): Unit = {
     Config.Pipelines.foreach { snapshotPipeline =>
@@ -67,13 +74,32 @@ class PipelineManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessa
       throw new Exception("Pipeline finishing is not expected.")
 
     case p @ PipelineFailed(pipelineId, partitionId, cause) =>
-      log.error(s"Pipeline $pipelineId for partition $partitionId failed with ${ThrowableUtils.getStackTraceString(cause)}, restarting.")
+      val tooManyErrors = errorTracker.registerEvent(ZonedDateTime.now())
 
-      val pipeline = pipelines(pipelineId + partitionId)
-      assertRunning(pipeline)
-      runningPipelines -= pipeline
+      if (tooManyErrors) {
+        log.error(s"Pipeline $pipelineId for partition $partitionId failed: ${ThrowableUtils.getStackTraceString(cause)}.")
 
-      startPipeline(pipelineId, partitionId)
+        val errorMessage = s"Too many pipeline fails in last ${errorTracker.period}."
+        log.error(errorMessage)
+
+        val pipeline = pipelines(pipelineId + partitionId)
+        assertRunning(pipeline)
+        runningPipelines -= pipeline
+
+        killSwitches.foreach { case (_, killSwitch) =>
+          killSwitch.shutdown()
+        }
+
+        throw new Exception(errorMessage)
+      } else {
+        log.error(s"Pipeline $pipelineId for partition $partitionId failed, restarting: ${ThrowableUtils.getStackTraceString(cause)}.")
+
+        val pipeline = pipelines(pipelineId + partitionId)
+        assertRunning(pipeline)
+        runningPipelines -= pipeline
+
+        startPipeline(pipelineId, partitionId)
+      }
   }
 
   private def assertRunning(pipeline: RunnablePipeline): Unit = {
