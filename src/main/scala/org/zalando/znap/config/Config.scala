@@ -98,6 +98,10 @@ object Config {
       val Period = appConfig.getDuration("supervision.nakadiReader.period")
     }
 
+    object Pipelines {
+      val MaxFailures = appConfig.getInt("supervision.pipelines.maxFailures")
+      val Period = appConfig.getDuration("supervision.pipelines.period")
+    }
   }
 
 
