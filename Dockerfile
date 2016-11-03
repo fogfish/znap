@@ -19,8 +19,6 @@ ENV JAVA_OPTS="\
    -server \
    -XX:+UseCondCardMark \
    -XX:-UseBiasedLocking \
-   -Xms1024M \
-   -Xmx3072M \
    -Xss1M \
    -XX:MaxPermSize=128m \
    -XX:+UseParallelGC \
@@ -35,6 +33,6 @@ ENV JAVA_OPTS="\
 
 EXPOSE 8080 8778 1099 1199
 
-ENTRYPOINT java ${JAVA_OPTS} -Dconfig.resource=/application.conf \
+ENTRYPOINT java ${JAVA_OPTS} $(java-dynamic-memory-opts) -Dconfig.resource=/application.conf \
            -javaagent:/jolokia.jar=port=8778,host=0.0.0.0 \
            -jar $APP.jar
