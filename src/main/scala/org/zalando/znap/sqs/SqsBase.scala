@@ -25,7 +25,7 @@ abstract class SqsBase(queueUri: String,
 
   private val logger = LoggerFactory.getLogger(classOf[SqsSignaller])
 
-  protected def send(values: List[String]): Unit = {
+  protected def send(values: Seq[String]): Unit = {
     if (values.nonEmpty) {
       values.foreach(v => assert(v.length <= Config.SQS.MaxMessageBodySize))
 
@@ -34,7 +34,7 @@ abstract class SqsBase(queueUri: String,
   }
 
   @tailrec
-  protected final def signal0(values: List[String])(retriesLeft: Int): Unit = {
+  protected final def signal0(values: Seq[String])(retriesLeft: Int): Unit = {
     val (toWrite, rest) = values.span(TotalSizeAndCountPredicate())
 
     assert(toWrite.nonEmpty)

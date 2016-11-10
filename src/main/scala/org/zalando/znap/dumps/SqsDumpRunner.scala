@@ -57,9 +57,9 @@ class SqsDumpRunner(tokens: NakadiTokens,
     val sqsClient = new AmazonSQSClient()
     val sqsDumping = target.dumping.get.asInstanceOf[SqsDumping]
     val dumper = new SqsDumper(sqsDumping, sqsClient)
-    val signallingStage = Flow[String].map { key =>
-      dumper.dump(key)
-      key
+    val signallingStage = Flow[Seq[String]].map { keys =>
+      dumper.dump(keys)
+      keys
     }
       .addAttributes(ActorAttributes.dispatcher(Config.Akka.SqsDispatcher))
       .async
@@ -67,6 +67,7 @@ class SqsDumpRunner(tokens: NakadiTokens,
     val sink = Sink.ignore
 
     source
+      .grouped(Config.SQS.MaxEntriesInWriteBatch)
       .via(signallingStage)
       .viaMat(KillSwitches.single)(Keep.right)
       .toMat(sink)(Keep.both)
