@@ -17,4 +17,8 @@ class SqsDumper(dumping: SqsDumping,
   def dump(value: String): Unit = {
     send(List(value))
   }
+
+  def dump(values: Seq[String]): Unit = {
+    send(values)
+  }
 }
