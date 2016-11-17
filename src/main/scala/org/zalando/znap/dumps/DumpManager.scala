@@ -43,6 +43,10 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
       val result = getDumpStatus(dumpUid)
       sender() ! result
 
+    case AbortDump(dumpUid) =>
+      val result = abortDump(dumpUid)
+      sender() ! result
+
     case SqsDumpRunner.Finished =>
       val dumpUid = dumpTracker.dumpFinishedSuccessfully(sender())
       log.info(s"Dump $dumpUid finished successfully")
@@ -91,6 +95,17 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
   private def getDumpStatus(dumpUID: DumpUID): DumpStatus = {
     dumpTracker.getStatus(dumpUID)
   }
+
+  private def abortDump(dumpUID: DumpUID): DumpStatus = {
+    val oldDumpRunner = dumpTracker.getRunner(dumpUID)
+    oldDumpRunner ! SqsDumpRunner.AbortDump
+
+    val dumpUID1 = dumpTracker.dumpAborted(oldDumpRunner)
+    assert(dumpUID == dumpUID1)
+    log.info(s"Dump $dumpUID aborted")
+
+    dumpTracker.getStatus(dumpUID)
+  }
 }
 
 object DumpManager {
@@ -105,6 +120,7 @@ object DumpManager {
   case object DumpingNotConfigured extends DumpCommandResult
 
   final case class GetDumpStatus(dumpUid: DumpUID)
+  final case class AbortDump(dumpUid: DumpUID)
 
 
   def props(tokens: NakadiTokens): Props = {
