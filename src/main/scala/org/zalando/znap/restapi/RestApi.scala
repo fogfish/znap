@@ -1,14 +1,15 @@
 package org.zalando.znap.restapi
 
-import java.util.concurrent.ConcurrentHashMap
-
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model.{HttpEntity, _}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directive0, Route, StandardRoute}
+import akka.http.scaladsl.unmarshalling.{Unmarshaller, _}
 import akka.stream.ActorMaterializer
+import akka.util.ByteString
+import com.fasterxml.jackson.core.JsonProcessingException
 import org.zalando.znap._
 import org.zalando.znap.config.{Config, SnapshotTarget}
 import org.zalando.znap.dumps.DumpManager
@@ -65,6 +66,17 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         }
       }
 
+    // Change the snapshot dumping status.
+    val routeChangeDumpStatus =
+      path("dumps" / Segment) {
+        (dumpUid: String) => {
+          patch {
+            entity(as[PatchDumpBody]) { patchDumpBody =>
+              patchDump(dumpUid, patchDumpBody)
+            }
+          }
+        }
+      }
 
     // Get an entity from a snapshot.
     val routeGetSnapshotEntity =
@@ -93,6 +105,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       routeGetSnapshotEntity ~
       routeStartDump ~
       routeGetDumpStatus ~
+      routeChangeDumpStatus ~
       routeHealthCheck
   }
 
@@ -146,60 +159,28 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   }
 
   private def getDumpStatus(dumpUid: String): StandardRoute = {
-    val result = DumpKeysService.getDumpStatus(dumpUid).map {
-      case dumps.DumpRunning =>
-        val contentType = MediaTypes.`application/json`
-        val responseString = Json.createObject(
-          "status" -> "RUNNING",
-          "message" -> s"Dump is running"
-        ).toString
-        HttpResponse(
-          StatusCodes.OK,
-          entity = HttpEntity(contentType, responseString)
-        )
+    val result = DumpKeysService.getDumpStatus(dumpUid).map { status =>
+      dumpStatusToResponse(dumpUid)(status)
+    }
+    complete(result)
+  }
 
-      case dumps.DumpFinishedSuccefully =>
-        val contentType = MediaTypes.`application/json`
-        val responseString = Json.createObject(
-          "status" -> "FINISHED_SUCCESSFULLY",
-          "message" -> s"Dump finished successfully"
-        ).toString
-        HttpResponse(
-          StatusCodes.OK,
-          entity = HttpEntity(contentType, responseString)
-        )
+  private def patchDump(dumpUid: String, patchDumpBody: PatchDumpBody): StandardRoute = {
+    val result = patchDumpBody.status.toUpperCase() match {
+      case DumpStatusAborted =>
+        DumpKeysService.abortDump(dumpUid).map { status =>
+          dumpStatusToResponse(dumpUid)(status)
+        }
 
-      case dumps.DumpAborted =>
+      case unsupported =>
         val contentType = MediaTypes.`application/json`
         val responseString = Json.createObject(
-          "status" -> "ABORTED",
-          "message" -> s"Dump aborted"
+          "message" -> s"""Dump status "$unsupported" is not supported."""
         ).toString
-        HttpResponse(
-          StatusCodes.OK,
+        Future.successful(HttpResponse(
+          StatusCodes.BadRequest,
           entity = HttpEntity(contentType, responseString)
-        )
-
-      case dumps.DumpFailed(errorMessage) =>
-        val contentType = MediaTypes.`application/json`
-        val responseString = Json.createObject(
-          "status" -> "FAILED",
-          "message" -> s"""Dump failed with error message: "$errorMessage""""
-        ).toString
-        HttpResponse(
-          StatusCodes.OK,
-          entity = HttpEntity(contentType, responseString)
-        )
-
-      case dumps.UnknownDump =>
-        val contentType = MediaTypes.`application/json`
-        val responseString = Json.createObject(
-          "message" -> s"Unknown dump $dumpUid"
-        ).toString
-        HttpResponse(
-          StatusCodes.NotFound,
-          entity = HttpEntity(contentType, responseString)
-        )
+        ))
     }
     complete(result)
   }
@@ -266,6 +247,11 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
 object RestApi {
 
+  private val DumpStatusRunning = "RUNNING"
+  private val DumpStatusFinishedSuccessfully = "FINISHED_SUCCESSFULLY"
+  private val DumpStatusAborted = "ABORTED"
+  private val DumpStatusFailed = "FAILED"
+
   /**
     * Directive for measuring latencies of HTTP queries
     * and sending them to Dropwizard.
@@ -282,6 +268,87 @@ object RestApi {
           f()(ctx)
         }
       }
+    }
+  }
+
+  case class PatchDumpBody(status: String)
+
+  implicit val rawIntFromEntityUnmarshaller: FromEntityUnmarshaller[PatchDumpBody] =
+    Unmarshaller.withMaterializer {
+      implicit ex ⇒ implicit mat ⇒ entity: HttpEntity ⇒
+        entity.dataBytes
+          .runFold(ByteString.empty)(_ ++ _) // concat the entire request body
+          .map { x =>
+            val str = x.utf8String
+          if (str.isEmpty) {
+            throw Unmarshaller.NoContentException
+          } else {
+            try {
+              Json.read[PatchDumpBody](str)
+            } catch {
+              case e: JsonProcessingException =>
+                throw new IllegalArgumentException("", e)
+            }
+          }
+        }
+    }
+
+  private def dumpStatusToResponse(dumpUid: String)
+                                  (dumpStatus: dumps.DumpStatus): HttpResponse = {
+    dumpStatus match {
+      case dumps.DumpRunning =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> DumpStatusRunning,
+          "message" -> s"Dump is running"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dumps.DumpFinishedSuccefully =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> DumpStatusFinishedSuccessfully,
+          "message" -> s"Dump finished successfully"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dumps.DumpAborted =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> DumpStatusAborted,
+          "message" -> s"Dump aborted"
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dumps.DumpFailed(errorMessage) =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "status" -> DumpStatusFailed,
+          "message" -> s"""Dump failed with error message: "$errorMessage""""
+        ).toString
+        HttpResponse(
+          StatusCodes.OK,
+          entity = HttpEntity(contentType, responseString)
+        )
+
+      case dumps.UnknownDump =>
+        val contentType = MediaTypes.`application/json`
+        val responseString = Json.createObject(
+          "message" -> s"Unknown dump $dumpUid"
+        ).toString
+        HttpResponse(
+          StatusCodes.NotFound,
+          entity = HttpEntity(contentType, responseString)
+        )
     }
   }
 }
