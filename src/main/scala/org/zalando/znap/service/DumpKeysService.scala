@@ -12,6 +12,15 @@ object DumpKeysService {
   import scala.concurrent.duration._
   import akka.pattern.ask
 
+  def getDumps()(implicit actorSystem: ActorSystem): Future[DumpManager.GetDumpsCommandResult] = {
+    implicit val ec = actorSystem.dispatcher
+    getActor(actorSystem).flatMap { ref =>
+      implicit val askTimeout = Timeout(10.seconds)
+      ref.ask(DumpManager.GetDumpsCommand)
+        .mapTo[DumpManager.GetDumpsCommandResult]
+    }
+  }
+
   def dump(target: SnapshotTarget, forceRestart: Boolean)
           (implicit actorSystem: ActorSystem): Future[DumpManager.DumpCommandResult] = {
     implicit val ec = actorSystem.dispatcher

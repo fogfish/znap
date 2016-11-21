@@ -34,6 +34,9 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
   }
 
   override def receive: Receive = {
+    case GetDumpsCommand =>
+      sender() ! getDumps()
+
     case DumpCommand(target, forceRestart) =>
       val result = startDump(target, forceRestart)
       log.info(s"Received dump command for target ${target.id}, result: $result")
@@ -50,6 +53,10 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
     case SqsDumpRunner.Finished =>
       val dumpUid = dumpTracker.dumpFinishedSuccessfully(sender())
       log.info(s"Dump $dumpUid finished successfully")
+  }
+
+  private def getDumps(): GetDumpsCommandResult = {
+    GetDumpsCommandResult(dumpTracker.getRunningDumps())
   }
 
   private def startDump(target: SnapshotTarget,
@@ -111,6 +118,9 @@ class DumpManager(tokens: NakadiTokens) extends Actor with NoUnexpectedMessages 
 object DumpManager {
 
   val name = "dump-manager"
+
+  case object GetDumpsCommand
+  final case class GetDumpsCommandResult(dumpUids: List[DumpUID])
 
   final case class DumpCommand(snapshotTarget: SnapshotTarget,
                                forceRestart: Boolean)
