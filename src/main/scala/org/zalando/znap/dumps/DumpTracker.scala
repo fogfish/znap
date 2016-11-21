@@ -17,6 +17,13 @@ class DumpTracker {
   private var dumpActorsReverse = Map.empty[ActorRef, DumpUID]
   private var dumpStatuses = Map.empty[DumpUID, DumpStatus]
 
+  def getRunningDumps(): List[DumpUID] = {
+    dumpStatuses.toList.collect {
+      case (dumpUid, status) if status == DumpRunning =>
+        dumpUid
+    }
+  }
+
   def getStatus(dumpUID: DumpUID): DumpStatus = {
     dumpStatuses.getOrElse(dumpUID, UnknownDump)
   }

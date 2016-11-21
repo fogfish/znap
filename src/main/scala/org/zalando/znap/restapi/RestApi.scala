@@ -56,6 +56,14 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         }
       }
 
+    val routeGetDumps = {
+      path("dumps") {
+        get {
+          getDumps()
+        }
+      }
+    }
+
     // Get the snapshot dumping status.
     val routeGetDumpStatus =
       path("dumps" / Segment) {
@@ -103,6 +111,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
     routeGetSnapshotList ~
       routeGetSnapshotEntity ~
+      routeGetDumps ~
       routeStartDump ~
       routeGetDumpStatus ~
       routeChangeDumpStatus ~
@@ -156,6 +165,19 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       case None =>
         complete(unknownTargetResponse(targetId))
     }
+  }
+
+  private def getDumps(): StandardRoute = {
+    val result = DumpKeysService.getDumps().map { case DumpManager.GetDumpsCommandResult(dumpUids) =>
+      val contentType = MediaTypes.`application/json`
+      val responseString = Json.write(dumpUids)
+      HttpResponse(
+        StatusCodes.OK,
+        entity = HttpEntity(contentType, responseString)
+      )
+    }
+    complete(result)
+
   }
 
   private def getDumpStatus(dumpUid: String): StandardRoute = {
