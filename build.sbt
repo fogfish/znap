@@ -10,13 +10,15 @@ scalacOptions ++= Seq(
   "-deprecation"
 )
 
+val akkaVersion = "2.4.14"
 libraryDependencies ++= {
   Seq(
-    "com.typesafe.akka" %% "akka-actor" % "2.4.10",
-    "com.typesafe.akka" %% "akka-stream" % "2.4.10",
-    "com.typesafe.akka" %% "akka-http-core" % "2.4.10",
-    "com.typesafe.akka" %% "akka-http-experimental" % "2.4.10",
-    "com.typesafe.akka" %% "akka-slf4j" % "2.4.10",
+    "com.typesafe.akka" %% "akka-actor" % akkaVersion,
+    "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+//    "com.typesafe.akka" %% "akka-http-core" % akkaVersion,
+//    "com.typesafe.akka" %% "akka-http-experimental" % akkaVersion,
+    "com.typesafe.akka" %% "akka-http" % "10.0.0",
+    "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
 
     "ch.qos.logback" % "logback-classic" % "1.1.7",
 

@@ -7,6 +7,7 @@ import akka.http.scaladsl.model.{HttpEntity, _}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directive0, Route, StandardRoute}
 import akka.http.scaladsl.unmarshalling.{Unmarshaller, _}
+import akka.http.scaladsl.model.headers.{HttpEncodings, `Accept-Encoding`, `Content-Encoding`}
 import akka.stream.ActorMaterializer
 import akka.util.ByteString
 import com.fasterxml.jackson.core.JsonProcessingException
@@ -15,7 +16,7 @@ import org.zalando.znap.config.{Config, SnapshotTarget}
 import org.zalando.znap.dumps.DumpManager
 import org.zalando.znap.metrics.Instrumented
 import org.zalando.znap.service.{DumpKeysService, EntityReaderService}
-import org.zalando.znap.utils.Json
+import org.zalando.znap.utils.{Compressor, Json}
 
 import scala.concurrent.Future
 
@@ -90,11 +91,22 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     val routeGetSnapshotEntity =
     path("snapshots" / Segment / "entities" / Segment) {
       (targetId: TargetId, key: String) => {
-        measureLatencyDirectives(targetId) {
-          get {
-            encodeResponseWith(Gzip) {
-              getSnapshotEntity(targetId, key)
+        measureLatencyDirectives.get(targetId).map { measureLatencyDirective =>
+          measureLatencyDirective {
+            get {
+              optionalHeaderValueByType[`Accept-Encoding`]() { acceptEncodingOpt =>
+                val acceptGzip = acceptEncodingOpt.exists(_.encodings.exists { e =>
+                  e.matches(HttpEncodings.gzip)
+                })
+                getSnapshotEntity(targetId, key, acceptGzip)
+              }
             }
+          }
+        }.getOrElse {
+          get {
+            complete(
+              HttpResponse(StatusCodes.NotFound)
+            )
           }
         }
       }
@@ -207,17 +219,39 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
     complete(result)
   }
 
-  private def getSnapshotEntity(targetId: TargetId, key: String): StandardRoute = {
+  private def getSnapshotEntity(targetId: TargetId, key: String, acceptGzip: Boolean): StandardRoute = {
     import scala.language.postfixOps
 
     targets.get(targetId) match {
       case Some(target) =>
-        val result = entityReaderService.getEntity(targetId, key).map {
-          case EntityReaderService.Entity(`key`, Some(str)) =>
-            HttpResponse(entity = HttpEntity(str))
+        val contentType = MediaTypes.`application/json`
 
-          case EntityReaderService.Entity(`key`, None) =>
-            val contentType = MediaTypes.`application/json`
+        val resultF = entityReaderService.getEntity(targetId, key).map {
+          case EntityReaderService.PlainEntity(`key`, str) =>
+            // Compress plain text if compression is supported by the client.
+            if (acceptGzip) {
+              val compressed = Compressor.compress(str)
+              HttpResponse(
+                entity = HttpEntity(contentType, compressed),
+                headers = List(`Content-Encoding`(HttpEncodings.gzip))
+              )
+            } else {
+              HttpResponse(entity = HttpEntity(contentType, str))
+            }
+
+          case EntityReaderService.GzippedEntity(`key`, bytes) =>
+            // Decompress compressed value if compression is not supporter by the client.
+            if (acceptGzip) {
+              HttpResponse(
+                entity = HttpEntity(contentType, bytes),
+                headers = List(`Content-Encoding`(HttpEncodings.gzip))
+              )
+            } else {
+              val str = Compressor.decompress(bytes)
+              HttpResponse(entity = HttpEntity(contentType, str))
+            }
+
+          case EntityReaderService.NoEntityFound(`key`) =>
             val responseString = s"""{"message": "Unknown key $key"}"""
             HttpResponse(
               StatusCodes.NotFound,
@@ -225,7 +259,6 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
             )
 
           case EntityReaderService.ProvisionedThroughputExceeded =>
-            val contentType = MediaTypes.`application/json`
             val responseString = s"""{"message": "Provisioned throughput exceeded"}"""
             HttpResponse(
               StatusCodes.ServiceUnavailable,
@@ -233,14 +266,13 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
             )
         }.recover {
           case e: akka.pattern.AskTimeoutException =>
-            val contentType = MediaTypes.`application/json`
             val responseString = s"""{"message": "Request took too long. Retry later"}"""
             HttpResponse(
               StatusCodes.ServiceUnavailable,
               entity = HttpEntity(contentType, responseString)
             )
         }
-        complete(result)
+        complete(resultF)
 
       case None =>
         complete(unknownTargetResponse(targetId))
