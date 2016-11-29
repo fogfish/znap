@@ -50,22 +50,20 @@ class DynamoDBEntityReader(targetId: TargetId,
 //      val item = table.getItem(Config.DynamoDB.KVTables.Attributes.Key, key)
 
       if (item == null) {
-        Entity(key, None)
+        NoEntityFound(key)
       } else {
         // Work with values based on theirs types.
         // String - not compressed value, Array[Byte] (binary) - compressed.
         val valueClass = item.getTypeOf(Config.DynamoDB.KVTables.Attributes.Value)
-        val value =
           if (valueClass == classOf[String]) {
-            item.getString(Config.DynamoDB.KVTables.Attributes.Value)
+            val value = item.getString(Config.DynamoDB.KVTables.Attributes.Value)
+            PlainEntity(key, value)
           } else if (valueClass == classOf[Array[Byte]]) {
             val compressed = item.getBinary(Config.DynamoDB.KVTables.Attributes.Value)
-            Compressor.decompress(compressed)
+            GzippedEntity(key, compressed)
           } else {
             throw new Exception(s"Invalid type of value: ${valueClass.getName}")
           }
-
-        Entity(key, Some(value))
       }
     } catch {
       case e: com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException =>

@@ -40,7 +40,9 @@ class EntityReaderService(actorRoot: ActorRef) {
 object EntityReaderService {
   final case class GetEntityCommand(key: String)
 
-  trait GetEntityCommandResult
-  final case class Entity(key: String, value: Option[String]) extends GetEntityCommandResult
+  sealed trait GetEntityCommandResult
+  case class NoEntityFound(key: String) extends GetEntityCommandResult
+  final case class PlainEntity(key: String, value: String) extends GetEntityCommandResult
+  final case class GzippedEntity(key: String, value: Array[Byte]) extends GetEntityCommandResult
   case object ProvisionedThroughputExceeded extends GetEntityCommandResult
 }
