@@ -2,12 +2,11 @@ package org.zalando.znap.restapi
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.coding.Gzip
 import akka.http.scaladsl.model.{HttpEntity, _}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directive0, Route, StandardRoute}
 import akka.http.scaladsl.unmarshalling.{Unmarshaller, _}
-import akka.http.scaladsl.model.headers.{HttpEncodings, `Accept-Encoding`, `Content-Encoding`}
+import akka.http.scaladsl.model.headers.{Connection, HttpEncodings, `Accept-Encoding`, `Content-Encoding`}
 import akka.stream.ActorMaterializer
 import akka.util.ByteString
 import com.fasterxml.jackson.core.JsonProcessingException
@@ -19,6 +18,7 @@ import org.zalando.znap.service.{DumpKeysService, EntityReaderService}
 import org.zalando.znap.utils.{Compressor, Json}
 
 import scala.concurrent.Future
+import scala.util.Success
 
 class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   import RestApi._
@@ -35,6 +35,8 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
   private val measureLatencyDirectives = targets.keys.map { id =>
     id -> new MeasureLatencyDirective(id)(actorSystem)
   }.toMap
+
+  private val discardRequestBody = createDiscardRequestBody()
 
   private val routes = {
     // List of all available snapshots.
@@ -70,7 +72,9 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       path("dumps" / Segment) {
         (dumpUid: String) => {
           get {
-            getDumpStatus(dumpUid)
+            discardRequestBody {
+              getDumpStatus(dumpUid)
+            }
           }
         }
       }
@@ -94,19 +98,21 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
         measureLatencyDirectives.get(targetId).map { measureLatencyDirective =>
           measureLatencyDirective {
             get {
-              optionalHeaderValueByType[`Accept-Encoding`]() { acceptEncodingOpt =>
-                val acceptGzip = acceptEncodingOpt.exists(_.encodings.exists { e =>
-                  e.matches(HttpEncodings.gzip)
-                })
-                getSnapshotEntity(targetId, key, acceptGzip)
+              discardRequestBody {
+                optionalHeaderValueByType[`Accept-Encoding`]() { acceptEncodingOpt =>
+                  val acceptGzip = acceptEncodingOpt.exists(_.encodings.exists { e =>
+                    e.matches(HttpEncodings.gzip)
+                  })
+                  getSnapshotEntity(targetId, key, acceptGzip)
+                }
               }
             }
           }
         }.getOrElse {
           get {
-            complete(
-              HttpResponse(StatusCodes.NotFound)
-            )
+            discardRequestBody {
+              complete(HttpResponse(StatusCodes.NotFound))
+            }
           }
         }
       }
@@ -115,11 +121,13 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
 
     // Health check.
     val routeHealthCheck =
-    path("health" / "ping") {
-      get {
-        complete("ok")
+      path("health" / "ping") {
+        get {
+          discardRequestBody {
+            complete("ok")
+          }
+        }
       }
-    }
 
     routeGetSnapshotList ~
       routeGetSnapshotEntity ~
@@ -128,6 +136,7 @@ class RestApi(actorRoot: ActorRef, actorSystem: ActorSystem) {
       routeGetDumpStatus ~
       routeChangeDumpStatus ~
       routeHealthCheck
+
   }
 
   private def getSnapshotList: StandardRoute = {
@@ -324,6 +333,20 @@ object RestApi {
       }
     }
   }
+
+  protected def createDiscardRequestBody()(implicit materializer: ActorMaterializer): Directive0 = {
+    withSizeLimit(8).tflatMap { _ =>
+      extractRequest.flatMap { request: HttpRequest =>
+        val finishedDraining = request.discardEntityBytes(materializer).future
+        onComplete(finishedDraining).flatMap {
+          case Success(_) => pass
+          case _ =>
+            complete(HttpResponse(StatusCodes.RequestEntityTooLarge).addHeader(Connection("close"))).toDirective
+        }
+      }
+    }
+  }
+
 
   case class PatchDumpBody(status: String)
 
